@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Parkar & Associates — Staff Task System v2.6.0</title>
+  <link rel="icon" type="image/png" href="assets/parkar-icon.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="ambient ambient-one"></div>
+  <div class="ambient ambient-two"></div>
+  <div class="ambient ambient-three"></div>
+
+  <section id="loginScreen" class="login-screen hidden">
+    <div class="login-card panel">
+      <div class="brand login-brand"><img class="brand-logo" src="assets/parkar-logo.png" alt="Parkar & Associates logo" /><div><strong>Staff Management</strong><span>Task Control System</span></div></div>
+      <h1>Team Login</h1>
+      <p>Owner and Manager: email + PIN. Staff: staff code + PIN.</p>
+      <form id="loginForm" class="form-card">
+        <label>Email or Staff Code<input id="loginEmail" autocomplete="username" placeholder="Email or S001" required /></label>
+        <label>PIN<input id="loginPin" type="password" inputmode="numeric" autocomplete="current-password" placeholder="Enter PIN" required /></label>
+        <button class="primary-btn" type="submit">Login</button>
+      </form>
+    </div>
+  </section>
+
+  <div class="app-shell hidden" id="appShell">
+    <aside class="sidebar">
+      <div class="brand sidebar-brand"><img class="brand-logo" src="assets/parkar-logo.png" alt="Parkar & Associates logo" /><div><strong>Staff Management</strong><span>Task Control System</span></div></div>
+      <nav>
+        <button class="nav-item active" data-view="dashboard"><span>▦</span> Dashboard</button>
+        <button class="nav-item" data-view="tasks"><span>☑</span> Tasks</button>
+        <button class="nav-item" data-view="add"><span>＋</span> Add Task</button>
+        <button class="nav-item" data-view="update"><span>↻</span> Update / Review</button>
+        <button class="nav-item" data-view="team"><span>◉</span> Team</button>
+        <button class="nav-item" data-view="people"><span>⚙</span> Admin / People</button>
+        <button class="nav-item" data-view="audit"><span>◎</span> Audit / Backup</button>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="small-title">Practical Team Setup</div>
+        <p>Maximum 2 owners and 30 active people total. IDs stay fixed for task history.</p>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow" id="todayLabel"></p>
+          <h1 id="pageTitle">Dashboard</h1>
+          <div class="brand-line">Parkar & Associates • Internal Task Control</div>
+        </div>
+        <div class="top-actions">
+          <div class="search-wrap"><span>⌕</span><input id="globalSearch" placeholder="Search task, staff, remarks..." /></div>
+          <select id="refreshMode"><option value="manual">Manual refresh</option><option value="4hr">Every 4 hours</option></select>
+          <button id="refreshNow" class="ghost-btn">Refresh now</button>
+          <button id="changePinBtn" class="ghost-btn">Change PIN</button>
+          <button id="systemStatusBtn" class="ghost-btn">System Status</button>
+          <button id="logoutBtn" class="ghost-btn">Logout</button>
+        </div>
+      </header>
+      <div class="login-user-badge" id="loginUserBadge"></div>
+      <div class="refresh-status" id="refreshStatus">Manual refresh only</div>
+      <div class="api-mode-banner" id="apiModeBanner">Checking connection...</div>
+
+      <section class="view active" id="dashboardView">
+        <div class="hero-grid">
+          <div class="kpi-card dark"><div class="kpi-icon">✓</div><p>Total Tasks</p><strong id="kpiTotal">0</strong><span id="kpiScope">Current view</span></div>
+          <div class="kpi-card"><div class="kpi-icon">⏱</div><p>Open Tasks</p><strong id="kpiOpen">0</strong><span>Pending + active work</span></div>
+          <div class="kpi-card"><div class="kpi-icon">⚠</div><p>Overdue</p><strong id="kpiOverdue">0</strong><span>Needs attention</span></div>
+          <div class="kpi-card"><div class="kpi-icon">🏁</div><p>Completed</p><strong id="kpiCompleted">0</strong><span>Closed tasks</span><div class="capacity-pill" id="capacityPill">0/30 People</div></div>
+        </div>
+
+        <div class="dashboard-grid">
+          <article class="panel wide">
+            <div class="panel-head"><div><h2>Current Task Status</h2><p>Status distribution from current task data</p></div><button class="pill" id="openTasksBtn">All Tasks ›</button></div>
+            <div class="status-bars" id="statusBars"></div>
+            <div class="legend" id="statusLegend"></div>
+          </article>
+          <article class="panel">
+            <div class="panel-head"><div><h2>Quick Suggestion</h2><p>Daily control shortcuts</p></div></div>
+            <div class="quick-cards">
+              <button data-filter="Overdue"><b id="quickOverdue">0</b><span>Overdue</span></button>
+              <button data-filter="Ready for Check"><b id="quickReady">0</b><span>Ready Check</span></button>
+              <button data-filter="Revision Required"><b id="quickRevision">0</b><span>Revision</span></button>
+            </div>
+          </article>
+          <article class="panel wide">
+            <div class="panel-head"><div><h2>All Task</h2><p>Fast preview of active work</p></div><button class="pill" data-view-target="tasks">All To-do ›</button></div>
+            <div class="task-list" id="dashboardTaskList"></div>
+          </article>
+          <article class="panel">
+            <div class="panel-head"><div><h2>My Summary Performance</h2><p>Role-based view</p></div></div>
+            <div class="summary-meter"><div class="meter-ring" id="meterRing"><span id="meterText">0%</span></div><div><b id="dailyDone">0/0 Task</b><span>Completed ratio</span><b id="readyLabel">0 Ready for Check</b></div></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="view" id="tasksView">
+        <div class="toolbar panel">
+          <select id="filterQuick"></select>
+          <select id="filterPriority"></select>
+          <select id="filterStaff"></select>
+          <select id="sortBy"></select>
+        </div>
+        <div class="table-card panel"><table><thead><tr><th>Task ID</th><th>Description</th><th>Assigned</th><th>Priority</th><th>Due</th><th>Status</th><th>Remarks</th><th>Link</th><th id="taskActionHead">Action</th></tr></thead><tbody id="taskTableBody"></tbody></table></div>
+      </section>
+
+      <section class="view" id="addView">
+        <div class="form-grid">
+          <form id="addTaskForm" class="panel form-card">
+            <h2>Add New Task</h2><p id="addHelp">Owner can assign to anyone. Manager can assign to team. Staff can add self-task only.</p>
+            <label>Task Description<textarea id="addDescription" required placeholder="Write clear task details..."></textarea></label>
+            <label>Assign To<select id="addAssignee"></select></label>
+            <label>Priority<select id="addPriority"></select></label>
+            <label>Due Date<input id="addDueDate" type="date" required /></label>
+            <label>Note / Reason<textarea id="addNote" placeholder="Optional note"></textarea></label>
+            <label>File / Drawing Link<input id="addLink" placeholder="Google Drive / drawing / reference link" /></label>
+            <button class="primary-btn" type="submit">Submit New Task</button>
+          </form>
+          <article class="panel rules-card"><h2>Workflow Rules</h2><ol><li>Owner/Manager tasks start as <b>Pending</b>; staff self-tasks start as <b>Requested</b> until approved.</li><li>Staff can update only Pending / In Progress / Ready for Check.</li><li>Requested tasks can be approved to Pending or Cancelled; Ready for Check tasks can become Completed or Revision Required.</li><li>Manager can act only on own-team tasks.</li><li>Owner manages people and login PINs from Admin / People.</li><li>Owner can delete wrong tasks and remove staff/manager records. If a person has task history, the app safely deactivates them instead of breaking history.</li></ol></article>
+        </div>
+      </section>
+
+      <section class="view" id="updateView">
+        <div class="form-grid">
+          <form id="updateForm" class="panel form-card">
+            <h2 id="updateTitle">Update Task</h2>
+            <label>Task ID<select id="updateTaskId"></select></label>
+            <label id="statusLabel">New Status<select id="updateStatus"></select></label>
+            <label>Remarks<textarea id="updateRemarks" required placeholder="Add progress / review remarks..."></textarea></label>
+            <button class="primary-btn" type="submit">Submit Update</button>
+          </form>
+          <article class="panel task-detail" id="selectedTaskDetail"><h2>Selected Task</h2><p>Select a task to view detail.</p></article>
+        </div>
+      </section>
+
+      <section class="view" id="teamView"><div class="panel table-card"><div class="panel-head"><h2>Team Master</h2></div><table><thead><tr><th>ID</th><th>Name</th><th>Role</th><th>Manager</th><th>Email</th><th>Active</th><th>Open Tasks</th></tr></thead><tbody id="teamTableBody"></tbody></table></div></section>
+
+      <section class="view" id="peopleView">
+        <div class="form-grid people-layout">
+          <form class="panel form-card" id="personForm">
+            <h2>People Management</h2>
+            <p id="peopleHelp">Owner can add and edit people. Manager can edit own staff.</p>
+            <input type="hidden" id="personEditingCode" />
+            <label>Person ID<input id="personCode" placeholder="Auto ID" readonly /></label>
+            <label>Name<input id="personName" placeholder="Full name" required /></label>
+            <label>Role<select id="personRole"></select></label>
+            <label>Email<input id="personEmail" type="email" placeholder="email@domain.com" /></label>
+            <label>PIN<input id="personPin" inputmode="numeric" placeholder="Set / reset PIN" /><small>Required for new person. Leave blank while editing to keep existing PIN.</small></label>
+            <label>Reporting Manager<select id="personManager"></select></label>
+            <label>Active Status<select id="personActive"><option>Yes</option><option>No</option></select></label>
+            <button class="primary-btn" type="submit">Save Person</button>
+            <button class="ghost-btn" type="button" onclick="document.getElementById('personForm').reset();document.getElementById('personEditingCode').value='';">Clear</button>
+          </form>
+          <div class="panel table-card people-card">
+            <div class="panel-head"><div><h2>Owner / Manager / Staff</h2><p>IDs remain fixed. Names, emails, PINs, role, active status and safe deletion can be managed.</p></div></div>
+            <div class="people-list" id="peopleList"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="view" id="auditView">
+        <div class="audit-hero panel">
+          <div>
+            <p class="eyebrow">Owner Control</p>
+            <h2>Audit & Backup</h2>
+            <p>Readable activity history, deleted/restored records, and exportable backups. Full history is kept safely for office review.</p>
+          </div>
+          <div class="audit-status-cards">
+            <div><b id="auditTotalCount">0</b><span>Total visible logs</span></div>
+            <div><b id="auditSecurityCount">0</b><span>Security events</span></div>
+            <div><b id="auditDeleteCount">0</b><span>Delete / restore</span></div>
+          </div>
+        </div>
+
+        <div class="backup-grid">
+          <article class="backup-card panel"><div class="backup-icon">☑</div><h3>Tasks Backup</h3><p>Current task data including deleted and archived flags.</p><button id="exportTasksBtn" class="primary-btn" type="button">Download Tasks CSV</button></article>
+          <article class="backup-card panel"><div class="backup-icon">◉</div><h3>People Backup</h3><p>Owner, manager and staff records. PIN values are never shown.</p><button id="exportPeopleBtn" class="primary-btn" type="button">Download People CSV</button></article>
+          <article class="backup-card panel"><div class="backup-icon">◎</div><h3>Audit Log Backup</h3><p>Who changed what, when, old value, new value, and reason.</p><button id="exportAuditBtn" class="primary-btn" type="button">Download Audit CSV</button></article>
+          <article class="backup-card panel"><div class="backup-icon">▣</div><h3>Full Backup</h3><p>Downloads tasks, people, audit, and remarks timeline files.</p><button id="exportFullBackupBtn" class="primary-btn" type="button">Download Full Backup</button></article>
+        </div>
+
+        <div class="toolbar panel audit-toolbar">
+          <select id="auditCategoryFilter"><option value="All">All Categories</option></select>
+          <select id="auditActionFilter"><option value="All">All Actions</option></select>
+          <select id="auditUserFilter"><option value="All">All Users</option></select>
+          <input id="auditDateFrom" type="date" title="From date" />
+          <input id="auditDateTo" type="date" title="To date" />
+          <input id="auditSearch" placeholder="Search task ID, reason, detail..." />
+          <button id="archiveCompletedBtn" class="ghost-btn" type="button">Archive Completed</button>
+        </div>
+
+        <div class="table-card panel">
+          <div class="panel-head"><div><h2>Recent Audit Trail</h2><p>Shows recent records. Full history is kept in the office database.</p></div></div>
+          <table><thead><tr><th>Time</th><th>User</th><th>Category</th><th>Action</th><th>Record</th><th>Old → New</th><th>Reason / Detail</th></tr></thead><tbody id="auditTableBody"></tbody></table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="taskEditModal" class="modal hidden">
+    <form id="editTaskForm" class="panel form-card modal-card">
+      <h2>Edit Task</h2>
+      <input type="hidden" id="editTaskId" />
+      <label>Description<textarea id="editDescription" required></textarea></label>
+      <label>Assign To<select id="editAssignee"></select></label>
+      <label>Priority<select id="editPriority"></select></label>
+      <label>Due Date<input id="editDueDate" type="date" /></label>
+      <label>File / Drawing Link<input id="editLink" placeholder="Google Drive / drawing link" /></label>
+      <label>Reason for edit<textarea id="editNote" placeholder="Why is this being changed?"></textarea></label>
+      <div class="modal-actions"><button class="primary-btn" type="submit">Save Edit</button><button id="cancelEditTask" class="ghost-btn" type="button">Cancel</button></div>
+    </form>
+  </div>
+
+
+  <div id="pinChangeModal" class="modal hidden">
+    <form id="pinChangeForm" class="panel form-card modal-card secure-modal">
+      <h2 id="pinModalTitle">Change PIN</h2>
+      <p id="pinModalHint">Use a non-trivial PIN. Avoid 1234, 1111, or simple sequences.</p>
+      <label>Current PIN<input id="pinOld" type="password" inputmode="numeric" autocomplete="current-password" required /></label>
+      <label>New PIN<input id="pinNew" type="password" inputmode="numeric" autocomplete="new-password" required /></label>
+      <label>Confirm New PIN<input id="pinConfirm" type="password" inputmode="numeric" autocomplete="new-password" required /></label>
+      <div id="pinModalError" class="modal-error"></div>
+      <div class="modal-actions"><button class="primary-btn" type="submit">Save PIN</button><button id="cancelPinChange" class="ghost-btn" type="button">Cancel</button></div>
+    </form>
+  </div>
+
+  <div id="systemStatusModal" class="modal hidden">
+    <div class="panel form-card modal-card secure-modal">
+      <h2>System Status</h2>
+      <p>Owner deployment check for version, login, sheet connection, and write access.</p>
+      <div id="systemStatusBody"><p>Checking system...</p></div>
+      <div class="modal-actions"><button id="closeSystemStatus" class="ghost-btn" type="button">Close</button></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+  <script src="app.js"></script>
+</body>
+</html>

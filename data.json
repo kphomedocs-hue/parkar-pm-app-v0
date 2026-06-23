@@ -1,0 +1,182 @@
+{
+  "brand": "Parkar and Associates",
+  "version": "2.5.1-stability-patch-preview",
+  "limits": {
+    "maxOwners": 2,
+    "maxActivePeople": 30
+  },
+  "staff": [
+    {
+      "code": "O001",
+      "name": "Ar. Kartik Verma",
+      "role": "Owner",
+      "email": "Ar.kartikverma@gmail.com",
+      "pin": "0000",
+      "managerCode": "",
+      "active": "Yes",
+      "notes": "Primary owner. Demo PIN only; set real PIN in Apps Script private setup.",
+      "failedAttempts": 0,
+      "lockedUntil": ""
+    },
+    {
+      "code": "M001",
+      "name": "Gitanjali",
+      "role": "Manager",
+      "email": "Staff@parkar.associates",
+      "pin": "0000",
+      "managerCode": "O001",
+      "active": "Yes",
+      "notes": "Reporting manager for Ali. Demo PIN only; set real PIN in Apps Script private setup.",
+      "failedAttempts": 0,
+      "lockedUntil": ""
+    },
+    {
+      "code": "S001",
+      "name": "Ali",
+      "role": "Staff",
+      "email": "Staff@parkar.associates",
+      "pin": "0000",
+      "managerCode": "M001",
+      "active": "Yes",
+      "notes": "Starting staff record. Demo PIN only; set real PIN in Apps Script private setup.",
+      "failedAttempts": 0,
+      "lockedUntil": ""
+    }
+  ],
+  "tasks": [
+    {
+      "taskId": "PA-T-001",
+      "dateAssigned": "2026-06-22",
+      "projectCode": "GENERAL",
+      "projectName": "General Tasks",
+      "taskDescription": "Prepare daily work update",
+      "assignedTo": "S001",
+      "assignedRole": "Staff",
+      "managerCode": "M001",
+      "priority": "Medium",
+      "dueDate": "2026-06-24",
+      "status": "Pending",
+      "staffRemarks": "",
+      "checkRemarks": "",
+      "completedDate": "",
+      "checkedBy": "",
+      "lastUpdated": "2026-06-22",
+      "createdBy": "O001",
+      "createdRole": "Owner",
+      "createdOn": "2026-06-22",
+      "source": "Owner Add",
+      "revisionCount": 0,
+      "historyNotes": "2026-06-22 created by O001",
+      "deleted": "No",
+      "archived": "No",
+      "drawingLink": "",
+      "timeline": [
+        {
+          "date": "2026-06-22",
+          "by": "O001",
+          "action": "Created",
+          "note": "Initial sample task"
+        }
+      ]
+    },
+    {
+      "taskId": "PA-T-002",
+      "dateAssigned": "2026-06-22",
+      "projectCode": "GENERAL",
+      "projectName": "General Tasks",
+      "taskDescription": "Submit a staff self-task request sample",
+      "assignedTo": "S001",
+      "assignedRole": "Staff",
+      "managerCode": "M001",
+      "priority": "Low",
+      "dueDate": "2026-06-25",
+      "status": "Requested",
+      "staffRemarks": "Request created by staff sample",
+      "checkRemarks": "",
+      "completedDate": "",
+      "checkedBy": "",
+      "lastUpdated": "2026-06-22",
+      "createdBy": "S001",
+      "createdRole": "Staff",
+      "createdOn": "2026-06-22",
+      "source": "Staff Request",
+      "revisionCount": 0,
+      "historyNotes": "2026-06-22 requested by S001",
+      "deleted": "No",
+      "archived": "No",
+      "drawingLink": "",
+      "timeline": [
+        {
+          "date": "2026-06-22",
+          "by": "S001",
+          "action": "Requested",
+          "note": "Staff self-task request"
+        }
+      ]
+    }
+  ],
+  "config": {
+    "priorities": [
+      "Urgent",
+      "High",
+      "Medium",
+      "Low"
+    ],
+    "statuses": [
+      "Requested",
+      "Pending",
+      "In Progress",
+      "Ready for Check",
+      "Revision Required",
+      "Completed",
+      "Cancelled"
+    ],
+    "staffAllowedStatuses": [
+      "Pending",
+      "In Progress",
+      "Ready for Check"
+    ],
+    "reviewStatuses": [
+      "Pending",
+      "Completed",
+      "Revision Required",
+      "Cancelled"
+    ],
+    "quickViews": [
+      "Open Tasks",
+      "All Tasks",
+      "Overdue",
+      "Due Next 7 Days",
+      "Requested",
+      "Pending",
+      "In Progress",
+      "Ready for Check",
+      "Revision Required",
+      "Completed History",
+      "Deleted / Archive",
+      "No Update 3 Days"
+    ],
+    "sorts": [
+      "Due Date",
+      "Priority",
+      "Status",
+      "Staff",
+      "Created Date",
+      "Last Updated"
+    ]
+  },
+  "auditLogs": [
+    {
+      "time": "2026-06-22 12:00:00",
+      "by": "SYSTEM",
+      "role": "System",
+      "category": "System",
+      "action": "DEPLOYMENT_TEMPLATE_READY",
+      "target": "v2.6.0",
+      "detail": "Parkar and Associates v2.6.0 stability patch preview data prepared",
+      "oldValue": "",
+      "newValue": "",
+      "reason": "Deployment setup"
+    }
+  ]
+}

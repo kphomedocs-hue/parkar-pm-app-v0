@@ -1,6 +1,6 @@
 {
   "brand": "Parkar and Associates",
-  "version": "2.5.1-stability-patch-preview",
+  "version": "2.6.1-timeout-fixed",
   "limits": {
     "maxOwners": 2,
     "maxActivePeople": 30
@@ -22,11 +22,11 @@
       "code": "M001",
       "name": "Gitanjali",
       "role": "Manager",
-      "email": "Staff@parkar.associates",
+      "email": "",
       "pin": "0000",
       "managerCode": "O001",
       "active": "Yes",
-      "notes": "Reporting manager for Ali. Demo PIN only; set real PIN in Apps Script private setup.",
+      "notes": "Reporting manager for Ali. Demo PIN only; login with M001 + PIN until a unique manager email is added.",
       "failedAttempts": 0,
       "lockedUntil": ""
     },

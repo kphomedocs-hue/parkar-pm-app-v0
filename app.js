@@ -2,9 +2,9 @@ const DATA_URL = 'data.json';
 // GitHub Pages frontend connects to Google Apps Script through this URL.
 // After deploying Apps Script as Web App, paste the Web App URL here. Keep blank only for local UI preview.
 const API_URL = 'https://script.google.com/macros/s/AKfycbzIOC31eWS8NNq0jFUnfMyV0JaF2CxE0lcgJlo60UZv-gmbioNzvPnGA5DNFwdRQdBZ/exec'; // visual QA demo mode
-const APP_VERSION = '2.6.0-hardened-login';
-const STORAGE_KEY = 'parkar-task-app-v2-6-0-deployment-preview';
-const SESSION_KEY = 'parkar-session-v2-6-0-secure';
+const APP_VERSION = '2.6.1-timeout-fixed';
+const STORAGE_KEY = 'parkar-task-app-v2-6-1-deployment-preview';
+const SESSION_KEY = 'parkar-session-v2-6-1-secure';
 const REFRESH_MODE_KEY = 'parkar-refresh-mode-v1';
 const FOUR_HOUR_MS = 4 * 60 * 60 * 1000;
 const PRIORITY_ORDER = { Urgent: 1, High: 2, Medium: 3, Low: 4 };
@@ -20,7 +20,21 @@ let sessionUser = null;
 const $ = (id) => document.getElementById(id);
 const clean = (txt='') => String(txt ?? '').trim();
 const todayISO = () => new Date().toISOString().slice(0,10);
+function formatDateReadable(value){
+  const raw = clean(value);
+  if(!raw) return '-';
+  const d = new Date(raw);
+  if(!Number.isNaN(d.getTime())) return d.toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'});
+  return raw;
+}
 const addDays = (n) => { const d = new Date(); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); };
+function formatDateReadable(value){
+  const raw = clean(value);
+  if(!raw) return '-';
+  const d = new Date(raw);
+  if(Number.isNaN(d.getTime())) return raw;
+  return d.toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' });
+}
 const isDeleted = (t) => String(t.deleted || 'No') === 'Yes';
 const isOpen = (t) => !['Completed','Cancelled'].includes(t.status) && !isDeleted(t);
 const isOverdue = (t) => t.dueDate && new Date(t.dueDate) < new Date(todayISO()) && isOpen(t);
@@ -81,9 +95,11 @@ function visiblePeopleCodes(){
   return [user.code];
 }
 function visibleTasks(includeDeleted=false){
+  const user = currentUser();
   const codes = visiblePeopleCodes();
   const q = clean($('globalSearch')?.value).toLowerCase();
   let rows = state.tasks.filter(t=>(includeDeleted || !isDeleted(t)) && (codes.includes(t.assignedTo) || codes.includes(t.createdBy)));
+  if(user?.role === 'Staff') rows = rows.filter(t => t.status !== 'Completed');
   if(q){ rows = rows.filter(t => Object.values(t).some(v => clean(v).toLowerCase().includes(q)) || clean(personByCode(t.assignedTo)?.name).toLowerCase().includes(q)); }
   return rows;
 }
@@ -261,12 +277,12 @@ function bindEvents(){
   $('systemStatusBtn')?.addEventListener('click',runSystemStatusCheck);
   document.querySelectorAll('.nav-item').forEach(btn=>btn.addEventListener('click',()=>showView(btn.dataset.view)));
   document.querySelectorAll('[data-view-target]').forEach(btn=>btn.addEventListener('click',()=>showView(btn.dataset.viewTarget)));
-  $('openTasksBtn').addEventListener('click',()=>showView('tasks'));
-  $('globalSearch').addEventListener('input',renderAll);
-  ['filterQuick','filterPriority','filterStaff','sortBy'].forEach(id=>$(id).addEventListener('change',renderTaskTable));
+  $('openTasksBtn')?.addEventListener('click',()=>showView('tasks'));
+  $('globalSearch')?.addEventListener('input',renderAll);
+  ['filterQuick','filterPriority','filterStaff','sortBy'].forEach(id=>$(id)?.addEventListener('change',renderTaskTable));
   document.querySelectorAll('.quick-cards button').forEach(b=>b.addEventListener('click',()=>{ showView('tasks'); $('filterQuick').value=b.dataset.filter; renderTaskTable(); }));
-  $('refreshNow').addEventListener('click',()=>refreshFromBackend('manual'));
-  $('refreshMode').value = storageGet(REFRESH_MODE_KEY) || 'manual'; $('refreshMode').addEventListener('change',setupRefreshTimer);
+  $('refreshNow')?.addEventListener('click',()=>refreshFromBackend('manual'));
+  if($('refreshMode')){ $('refreshMode').value = storageGet(REFRESH_MODE_KEY) || 'manual'; $('refreshMode').addEventListener('change',setupRefreshTimer); }
   $('addTaskForm').addEventListener('submit',submitNewTask);
   $('updateForm').addEventListener('submit',submitUpdate);
   $('updateTaskId').addEventListener('change',renderSelectedTaskDetail);
@@ -274,6 +290,8 @@ function bindEvents(){
   $('personRole').addEventListener('change',renderPersonFormRules);
   document.addEventListener('click', handlePeopleActions);
   document.addEventListener('click', handleTaskDeleteActions);
+  document.addEventListener('click', handleDashboardTaskOpen);
+  document.addEventListener('keydown', handleDashboardTaskKey);
   $('editTaskForm')?.addEventListener('submit', submitTaskEdit);
   $('cancelEditTask')?.addEventListener('click',()=>$('taskEditModal').classList.add('hidden'));
   $('closeSystemStatus')?.addEventListener('click',()=>$('systemStatusModal').classList.add('hidden'));
@@ -293,7 +311,7 @@ function initDynamicControls(){
   fillSelect('personRole', ['Staff','Manager','Owner'], 'Staff');
 }
 function optionHtml(value, label=value){ return `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`; }
-function fillSelect(id, items, selected){ $(id).innerHTML = items.map(x=>optionHtml(x)).join(''); if(selected) $(id).value = selected; }
+function fillSelect(id, items, selected){ const el=$(id); if(!el) return; el.innerHTML = items.map(x=>optionHtml(x)).join(''); if(selected) el.value = selected; }
 function showView(view){
   currentView=view;
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
@@ -333,7 +351,7 @@ function renderAll(){
   const user=currentUser();
   $('loginUserBadge').innerHTML = `<b>${escapeHtml(user.name)}</b><span>${escapeHtml(user.role)} · ${escapeHtml(user.email || user.code)}</span>`;
   refreshFilterSelects();
-  renderDashboard(); renderTaskTable(); renderUpdateOptions(); renderTeam(); renderPeople(); renderPersonFormRules(); renderAudit(); refreshStatusText();
+  renderDashboard(); renderTaskTable(); renderUpdateOptions(); renderTeam(); renderPeople(); renderPersonFormRules(); renderAudit(); renderLoginSecurity(); refreshStatusText();
   $('addHelp').textContent = user.role==='Owner' ? 'Owner can assign to any active owner, manager or staff.' : user.role==='Manager' ? 'Manager can assign only to self or own team.' : 'Staff can add only their own self-task/request.';
   $('updateTitle').textContent = user.role==='Staff' ? 'Staff Progress Update' : `${user.role} Review Action`;
 }
@@ -345,19 +363,95 @@ function filteredTaskRows(){
   return sortedRows(rows, $('sortBy').value);
 }
 function renderDashboard(){
-  const rows = visibleTasks(); const open = rows.filter(isOpen).length, overdue = rows.filter(isOverdue).length, done = rows.filter(t=>t.status==='Completed').length;
-  $('kpiTotal').textContent=rows.length; $('kpiOpen').textContent=open; $('kpiOverdue').textContent=overdue; $('kpiCompleted').textContent=done;
-  $('kpiScope').textContent = `${currentUser()?.role || ''} view`;
-  $('capacityPill').textContent = `${activePeople().length}/${maxPeople()} People · ${activeByRole('Owner').length}/${maxOwners()} Owners`; 
-  $('quickOverdue').textContent=overdue; $('quickReady').textContent=rows.filter(t=>t.status==='Ready for Check').length; $('quickRevision').textContent=rows.filter(t=>t.status==='Revision Required').length;
-  const statuses=['Pending','In Progress','Ready for Check','Revision Required','Completed']; const max = Math.max(1,...statuses.map(s=>rows.filter(t=>t.status===s).length));
-  $('statusBars').innerHTML = statuses.map((s,i)=>{ const n=rows.filter(t=>t.status===s).length; const h=24+(n/max)*120; return `<div class="bar-wrap"><div class="bar ${i%3===1?'alt':i%3===2?'warn':''}" style="height:${h}px" title="${s}: ${n}"></div><div class="bar-label">${s}<br><b>${n}</b></div></div>`}).join('');
-  $('statusLegend').innerHTML = statuses.map(s=>`<span>● ${s}</span>`).join('');
-  const preview = sortedRows(applyQuick(rows,'Open Tasks'),'Due Date').slice(0,5); $('dashboardTaskList').innerHTML = preview.length ? preview.map(taskRow).join('') : `<p>No active tasks in this view.</p>`;
-  const pct = rows.length ? Math.round(done/rows.length*100) : 0; $('meterRing').style.setProperty('--pct', pct); $('meterText').textContent = pct+'%'; $('dailyDone').textContent = `${done}/${rows.length} Task`; $('readyLabel').textContent = `${rows.filter(t=>t.status==='Ready for Check').length} Ready for Check`;
+  const user=currentUser();
+  const rows = visibleTasks();
+  const open = rows.filter(isOpen).length;
+  const overdue = rows.filter(isOverdue).length;
+  const done = rows.filter(t=>t.status==='Completed').length;
+  const ready = rows.filter(t=>t.status==='Ready for Check' && !isDeleted(t)).length;
+  const requested = rows.filter(t=>t.status==='Requested' && !isDeleted(t)).length;
+  const revision = rows.filter(t=>t.status==='Revision Required' && !isDeleted(t)).length;
+  const stale = rows.filter(noUpdate3Days).length;
+  if($('kpiTotal')) $('kpiTotal').textContent=rows.length;
+  if($('kpiOpen')) $('kpiOpen').textContent=open;
+  if($('kpiOverdue')) $('kpiOverdue').textContent=overdue;
+  if($('kpiCompleted')) $('kpiCompleted').textContent=done;
+  if($('kpiApproval')) $('kpiApproval').textContent=ready;
+  if($('kpiScope')) $('kpiScope').textContent = `${user?.role || ''} view`;
+  const ownerOnly = user?.role === 'Owner';
+  document.querySelectorAll('.role-owner-only').forEach(el=>el.classList.toggle('hidden', !ownerOnly));
+  document.querySelectorAll('.role-owner-manager-only').forEach(el=>el.classList.toggle('hidden', !['Owner','Manager'].includes(user?.role)));
+  document.querySelectorAll('.role-staff-hide').forEach(el=>el.classList.toggle('hidden', user?.role === 'Staff'));
+
+  const statuses=['Pending','In Progress','Ready for Check','Revision Required','Completed'];
+  const max = Math.max(1,...statuses.map(s=>rows.filter(t=>t.status===s).length));
+  if($('statusBars')) $('statusBars').innerHTML = statuses.map((s,i)=>{ const n=rows.filter(t=>t.status===s).length; const h=24+(n/max)*120; return `<div class="bar-wrap"><div class="bar ${i%3===1?'alt':i%3===2?'warn':''}" style="height:${h}px" title="${s}: ${n}"></div><div class="bar-label">${s}<br><b>${n}</b></div></div>`}).join('');
+  if($('statusLegend')) $('statusLegend').innerHTML = statuses.map(s=>`<span>● ${s}</span>`).join('');
+
+  const preview = sortedRows(applyQuick(rows,'Open Tasks'),'Due Date').slice(0,5);
+  if($('dashboardTaskList')) $('dashboardTaskList').innerHTML = preview.length ? preview.map(taskRow).join('') : `<p>No active tasks in this view.</p>`;
+  const approvalRows = sortedRows(rows.filter(t=>t.status==='Ready for Check' && !isDeleted(t)),'Due Date').slice(0,6);
+  if($('approvalTaskList')) $('approvalTaskList').innerHTML = approvalRows.length ? approvalRows.map(taskRow).join('') : `<p>No tasks currently sent for approval.</p>`;
+
+  if($('reviewSummaryGrid')){
+    const cards = [
+      ['Ready for Check', ready, 'Staff has sent work for review', 'Ready for Check'],
+      ['Requested Tasks', requested, 'Staff task requests need approval', 'Requested'],
+      ['Revision Required', revision, 'Sent back for correction', 'Revision Required'],
+      ['No Update 3 Days', stale, 'Needs follow-up', 'No Update 3 Days'],
+      ['Overdue', overdue, 'Due date crossed', 'Overdue']
+    ];
+    $('reviewSummaryGrid').innerHTML = cards.map(([label,count,hint,filter])=>`<button class="review-summary-card" data-review-filter="${escapeHtml(filter)}"><b>${count}</b><span>${escapeHtml(label)}</span><small>${escapeHtml(hint)}</small></button>`).join('');
+  }
+  if($('reviewWaitingList')){
+    const waitRows = sortedRows(rows.filter(t=>['Ready for Check','Requested','Revision Required'].includes(t.status) && !isDeleted(t)),'Due Date').slice(0,6);
+    $('reviewWaitingList').innerHTML = waitRows.length ? waitRows.map(taskRow).join('') : `<p>No review/correction items right now.</p>`;
+  }
+
+  renderTeamPie(rows);
 }
-function taskRow(t){ const status = isOverdue(t)?'Overdue':t.status; return `<div class="task-row"><div class="circle"></div><div><div class="task-title">${escapeHtml(t.taskDescription)}</div><div class="task-meta">${escapeHtml(personByCode(t.assignedTo)?.name || t.assignedTo)} • Due ${escapeHtml(t.dueDate || '-')}</div></div><span class="badge ${cssToken(t.priority)}">${escapeHtml(t.priority)}</span><span class="badge status ${statusClass(status)}">${escapeHtml(status)}</span></div>`; }
-function canEditTask(t){ const user=currentUser(); if(!user || isDeleted(t)) return false; if(user.role==='Owner') return true; if(user.role==='Manager') return visiblePeopleCodes().includes(t.assignedTo); if(user.role==='Staff') return t.createdBy===user.code && t.assignedTo===user.code && ['Pending','In Progress','Revision Required'].includes(t.status); return false; }
+
+function renderTeamPie(rows){
+  const box=$('teamPieList'); if(!box) return;
+  const user=currentUser();
+  if(user?.role === 'Staff'){ box.innerHTML=''; return; }
+  const candidates = activePeople().filter(p=>['Manager','Staff'].includes(p.role) && visiblePeopleCodes().includes(p.code));
+  const peopleWithData = candidates.map(p=>{
+    const tasks = rows.filter(t=>t.assignedTo===p.code && !isDeleted(t));
+    const pending = tasks.filter(t=>['Requested','Pending','In Progress','Revision Required','Ready for Check'].includes(t.status)).length;
+    const latest = tasks.map(t=>new Date(t.lastUpdated || t.dateAssigned || 0).getTime()).sort((a,b)=>b-a)[0] || 0;
+    return {p,tasks,pending,total:tasks.length,latest};
+  }).filter(x=>x.total>0).sort((a,b)=>b.latest-a.latest).slice(0,4);
+  if(!peopleWithData.length){ box.innerHTML='<p>No team task data yet.</p>'; return; }
+  box.innerHTML = peopleWithData.map(x=>{
+    const pct = x.total ? Math.round(x.pending/x.total*100) : 0;
+    return `<div class="team-pie-card"><div class="mini-donut" style="--pct:${pct}"><span>${x.pending}/${x.total}</span></div><div><b>${escapeHtml(x.p.name)}</b><small>${escapeHtml(x.p.role)} · ${escapeHtml(x.p.code)}</small><em>${x.pending} pending of ${x.total} total</em></div></div>`;
+  }).join('');
+}
+
+function openTaskInUpdate(taskId){
+  if(!taskId) return;
+  showView('update');
+  setTimeout(()=>{ const sel=$('updateTaskId'); if(sel){ sel.value=taskId; renderSelectedTaskDetail(); } }, 0);
+}
+function handleDashboardTaskOpen(e){
+  const summary=e.target.closest('.review-summary-card');
+  if(summary){ showView('tasks'); const f=$('filterQuick'); if(f){ f.value=summary.dataset.reviewFilter || 'Open Tasks'; renderTaskTable(); } return; }
+  const row=e.target.closest('.dashboard-open-task');
+  if(!row || e.target.closest('button,a,select,input,textarea')) return;
+  openTaskInUpdate(row.dataset.taskId);
+}
+function handleDashboardTaskKey(e){
+  const row=e.target.closest?.('.dashboard-open-task');
+  if(!row) return;
+  if(e.key==='Enter' || e.key===' '){ e.preventDefault(); openTaskInUpdate(row.dataset.taskId); }
+}
+function taskRow(t){
+  const status = isOverdue(t)?'Overdue':t.status;
+  const edit = canEditTask(t) ? `<button class="pill edit-task dashboard-edit" data-task-id="${escapeHtml(t.taskId)}" type="button">Edit</button>` : '';
+  return `<div class="task-row dashboard-open-task" data-task-id="${escapeHtml(t.taskId)}" tabindex="0" role="button" title="Open Update / Review for ${escapeHtml(t.taskId)}"><div class="circle"></div><div><div class="task-title">${escapeHtml(t.taskDescription)}</div><div class="task-meta">${escapeHtml(personByCode(t.assignedTo)?.name || t.assignedTo)} • Due ${escapeHtml(formatDateReadable(t.dueDate))}</div></div><span class="badge ${cssToken(t.priority)}">${escapeHtml(t.priority)}</span><span class="badge status ${statusClass(status)}">${escapeHtml(status)}</span>${edit}</div>`;
+}
+function canEditTask(t){ const user=currentUser(); if(!user || isDeleted(t)) return false; if(user.role==='Owner') return true; if(user.role==='Manager') return visiblePeopleCodes().includes(t.assignedTo); if(user.role==='Staff') return t.assignedTo===user.code && ['Requested','Pending','In Progress','Revision Required'].includes(t.status); return false; }
 function renderTaskTable(){
   const rows = filteredTaskRows();
   const user = currentUser();
@@ -368,11 +462,15 @@ function renderTaskTable(){
     const safeTaskId = escapeHtml(t.taskId);
     const status = deleted ? 'Deleted' : isOverdue(t) ? 'Overdue' : t.status;
     const actions = showActions ? `<td>${canEditTask(t)?`<button class="pill edit-task" data-task-id="${safeTaskId}">Edit</button>`:''}${user.role==='Owner'?` ${deleted?`<button class="pill restore-task" data-task-id="${safeTaskId}">Restore</button>`:`<button class="pill danger-task delete-task" data-task-id="${safeTaskId}">Delete</button>`}`:''}</td>` : '';
-    return `<tr class="${deleted?'soft-deleted':''}"><td><b>${safeTaskId}</b></td><td>${escapeHtml(t.taskDescription)}</td><td>${escapeHtml(t.assignedTo)}<br><small>${escapeHtml(personByCode(t.assignedTo)?.name || deletedPersonLabel(t.assignedTo))}</small></td><td><span class="badge ${cssToken(t.priority)}">${escapeHtml(t.priority)}</span></td><td>${escapeHtml(t.dueDate || '-')}</td><td><span class="badge status ${statusClass(status)}">${escapeHtml(status)}</span></td><td>${escapeHtml(t.staffRemarks || t.checkRemarks || '-')}</td><td>${link}</td>${actions}</tr>`;
+    return `<tr class="${deleted?'soft-deleted':''}"><td><b>${safeTaskId}</b></td><td>${escapeHtml(t.taskDescription)}</td><td>${escapeHtml(t.assignedTo)}<br><small>${escapeHtml(personByCode(t.assignedTo)?.name || deletedPersonLabel(t.assignedTo))}</small></td><td><span class="badge ${cssToken(t.priority)}">${escapeHtml(t.priority)}</span></td><td>${escapeHtml(formatDateReadable(t.dueDate))}</td><td><span class="badge status ${statusClass(status)}">${escapeHtml(status)}</span></td><td>${escapeHtml(t.staffRemarks || t.checkRemarks || '-')}</td><td>${link}</td>${actions}</tr>`;
   }).join('') : `<tr><td colspan="${showActions ? 9 : 8}">No tasks match selected filters.</td></tr>`;
 }
 function statusOptionsForTask(user, task){
-  if(user.role==='Staff') return state.config.staffAllowedStatuses;
+  if(!user || !task) return [];
+  if(user.role==='Staff'){
+    if(task.status === 'Requested') return ['Cancelled'];
+    return state.config.staffAllowedStatuses || ['Pending','In Progress','Ready for Check'];
+  }
   if(task?.status === 'Requested') return ['Pending','Cancelled'];
   if(task?.status === 'Ready for Check') return ['Completed','Revision Required'];
   return [];
@@ -390,7 +488,10 @@ function renderSelectedTaskDetail(){
   $('updateStatus').innerHTML = opts.length ? opts.map(x=>optionHtml(x)).join('') : '<option value="">No valid status</option>';
   if(!t){ $('selectedTaskDetail').innerHTML='<h2>Selected Task</h2><p>No eligible task selected.</p>'; return; }
   const reviewWarning = user.role !== 'Staff' ? '<div class="staff-capacity-note">Refresh before reviewing if this page has been open for a long time.</div>' : '';
-  $('selectedTaskDetail').innerHTML = `<h2>Selected Task</h2>${reviewWarning}${[['Task ID',t.taskId],['Description',t.taskDescription],['Assigned To',`${personByCode(t.assignedTo)?.name || ''} (${t.assignedTo})`],['Priority',t.priority],['Due Date',t.dueDate],['Status',t.status],['Staff Remarks',t.staffRemarks || '-'],['Check Remarks',t.checkRemarks || '-'],['Link',t.drawingLink || '-'],['History',t.historyNotes || '-']].map(([k,v])=>`<div class="detail-line"><b>${k}</b><span>${escapeHtml(v)}</span></div>`).join('')}`;
+  const canOwnerManagerEdit = ['Owner','Manager'].includes(user.role) && canEditTask(t);
+  const editButton = canOwnerManagerEdit ? `<button class="pill edit-task selected-task-edit-btn" data-task-id="${escapeHtml(t.taskId)}" type="button">Edit Selected Task Details</button>` : '';
+  const rows = [['Task ID',t.taskId],['Description',t.taskDescription],['Assigned To',`${personByCode(t.assignedTo)?.name || ''} (${t.assignedTo})`],['Priority',t.priority],['Due Date',formatDateReadable(t.dueDate)],['Status',t.status],['Staff Remarks',t.staffRemarks || '-'],['Check Remarks',t.checkRemarks || '-'],['Link',t.drawingLink || '-'],['History',t.historyNotes || '-']];
+  $('selectedTaskDetail').innerHTML = `<div class="selected-task-head"><h2>Selected Task</h2>${editButton}</div>${reviewWarning}${rows.map(([k,v])=>`<div class="detail-line"><b>${k}</b><span>${escapeHtml(v)}</span></div>`).join('')}<div class="staff-capacity-note">Owner/Manager can edit task description, assignee, priority, due date and file link from this button. Status and review remarks are updated from the form on the left.</div>`;
 }
 function renderTeam(){
   const codes=visiblePeopleCodes(); const rows=people().filter(s=>codes.includes(s.code));
@@ -522,6 +623,18 @@ async function submitPerson(e){
   }catch(err){ showError(err); } finally { formBusy(e, false); }
 }
 
+
+function renderLoginSecurity(){
+  const box=$('loginSecurityList'); if(!box) return;
+  const user=currentUser();
+  if(!['Owner','Manager'].includes(user?.role)){ box.innerHTML='<p>Login security is visible to Owner/Manager only.</p>'; return; }
+  const sessions = state.loginSessions || [];
+  if(!sessions.length){ box.innerHTML='<p>Login session tracking will appear here after live Apps Script is updated and users login again.</p>'; return; }
+  const codes=visiblePeopleCodes();
+  const rows=sessions.filter(x=>codes.includes(x.code)).slice(0,12);
+  box.innerHTML = rows.length ? rows.map(x=>`<div class="login-session-row"><b>${escapeHtml(personByCode(x.code)?.name || x.code)}</b><span>${escapeHtml(x.loginTime || '-')} · ${escapeHtml(x.duration || '-')}</span><small>IP: ${escapeHtml(x.ip || 'Unavailable')} · ${escapeHtml(x.ipChanged || 'Same/unknown')} · ${escapeHtml(x.device || '-')}</small></div>`).join('') : '<p>No visible login sessions yet.</p>';
+}
+
 function normalizeAudit(a){ return { category:a.category || auditCategory(a.action || ''), role:a.role || personByCode(a.by)?.role || '', oldValue:a.oldValue || '', newValue:a.newValue || '', reason:a.reason || a.detail || '', ...a }; }
 function refreshAuditFilterOptions(rows){
   const current = id => $(id)?.value || 'All';
@@ -603,7 +716,13 @@ async function submitUpdate(e){
   e.preventDefault(); if(formBusy(e, true, 'Submitting update...')) return; const user=currentUser(); const id=$('updateTaskId').value; const t=state.tasks.find(x=>x.taskId===id); if(!t){ formBusy(e, false); toast('No eligible task selected'); return; }
   const newStatus=$('updateStatus').value; const remarks=clean($('updateRemarks').value);
   try { if(API_URL){ const payload = await apiPost({ action:'updateTask', userCode:user.code, userRole:user.role, taskId:id, newStatus, remarks }); master = payload.data || await fetchBootstrap(); state = JSON.parse(JSON.stringify(master)); $('updateRemarks').value=''; renderAll(); toast('Task updated'); return; }
-    if(user.role==='Staff'){ if(t.assignedTo!==user.code){ toast('Staff can update only own task'); return; } if(!state.config.staffAllowedStatuses.includes(newStatus)){ toast('Staff cannot mark Completed'); return; } if(['Completed','Cancelled'].includes(t.status)){ toast('Closed task cannot be updated by staff'); return; } t.staffRemarks=remarks; addTimeline(t,newStatus,remarks); addAudit('TASK_UPDATED', id, `${newStatus} by staff`); }
+    if(user.role==='Staff'){
+      if(t.assignedTo!==user.code){ toast('Staff can update only own task'); return; }
+      if(['Completed','Cancelled'].includes(t.status)){ toast('Closed task cannot be updated by staff'); return; }
+      if(t.status==='Requested' && newStatus!=='Cancelled'){ toast('Requested self-task can only be cancelled by staff or approved by Owner/Manager.'); return; }
+      if(t.status!=='Requested' && !(state.config.staffAllowedStatuses||[]).includes(newStatus)){ toast('Staff cannot mark Completed'); return; }
+      t.staffRemarks=remarks; addTimeline(t,newStatus,remarks); addAudit('TASK_UPDATED', id, `${newStatus} by staff`);
+    }
     else { if(user.role==='Manager' && !visiblePeopleCodes().includes(t.assignedTo)){ toast('Manager cannot review outside team'); return; } if(t.status==='Requested'){ if(!['Pending','Cancelled'].includes(newStatus)){ toast('Requested tasks can only be approved to Pending or Cancelled.'); return; } }
       else { if(t.status!=='Ready for Check'){ toast('Review allowed only when task is Ready for Check'); return; } if(!['Completed','Revision Required'].includes(newStatus)){ toast('Invalid review action'); return; } }
       t.checkRemarks=remarks; t.checkedBy=user.code; if(newStatus==='Completed') t.completedDate=todayISO(); addTimeline(t,newStatus,remarks); addAudit(t.status==='Requested'?'TASK_REQUEST_REVIEWED':'TASK_REVIEWED', id, `${newStatus} by ${user.role}`); }

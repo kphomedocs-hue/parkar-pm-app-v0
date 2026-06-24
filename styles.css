@@ -217,3 +217,68 @@ body:after{
 .status-check-grid b{display:block;color:var(--deep);font-size:12px;text-transform:uppercase;letter-spacing:.04em}
 .status-check-grid span{display:block;margin-top:5px;color:var(--muted);font-weight:750;word-break:break-word}
 @media(max-width:640px){.top-actions{gap:8px}.top-actions .ghost-btn{padding:10px 12px;font-size:12px}.status-check-grid{grid-template-columns:1fr}.secure-modal{width:100%}}
+
+
+/* User requested cleanup: remove practical setup/footer areas, quick suggestions, and capacity text. */
+.sidebar-footer,.capacity-pill{display:none!important;}
+.dashboard-grid{grid-template-columns:1.42fr 1fr;}
+.dashboard-edit{padding:9px 12px;font-size:12px;white-space:nowrap;}
+@media(min-width:641px){.task-row{grid-template-columns:32px 1fr auto auto auto;}}
+@media(max-width:640px){.dashboard-edit{grid-column:2;justify-self:start;margin-top:4px;}}
+
+/* v2.6.1 selected task edit action */
+.selected-task-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:8px;
+}
+.selected-task-head h2{margin:0;}
+.selected-task-edit-btn{
+  white-space:normal;
+  text-align:center;
+  max-width:210px;
+}
+.task-detail .detail-line span{
+  overflow-wrap:anywhere;
+  word-break:break-word;
+}
+@media(max-width:640px){
+  .selected-task-head{align-items:flex-start;flex-direction:column;}
+  .selected-task-edit-btn{width:100%;max-width:none;}
+}
+
+
+/* v2.6.1 final QA/layout rules */
+.role-owner-only.hidden,.role-owner-manager-only.hidden,.role-staff-hide.hidden{display:none!important;}
+.sidebar-user{margin:0 0 10px 0;width:100%;position:relative;z-index:3;}
+.sidebar-user-actions{position:relative;z-index:3;margin-bottom:14px;}
+.compact-logout{width:100%;padding:10px 12px;}
+.admin-console-card{padding:14px;border-radius:24px;background:rgba(255,255,255,.44);box-shadow:var(--press);display:grid;gap:12px;}
+.admin-console-grid{display:grid;grid-template-columns:1fr;gap:10px;}
+.admin-console-grid label{display:grid;gap:6px;font-size:12px;color:var(--muted);}
+.admin-refresh-status{margin:0;font-size:12px;}
+.review-summary-grid{display:grid;grid-template-columns:repeat(5,minmax(120px,1fr));gap:12px;margin-bottom:14px;}
+.review-summary-card{border:1px solid rgba(255,255,255,.8);border-radius:22px;background:linear-gradient(145deg,rgba(255,255,255,.72),rgba(240,226,205,.46));box-shadow:var(--shadow-small);padding:14px;text-align:left;cursor:pointer;color:var(--ink);}
+.review-summary-card b{display:block;font-size:30px;color:var(--brand-bronze);line-height:1;}
+.review-summary-card span{display:block;font-weight:900;margin-top:7px;}
+.review-summary-card small{display:block;color:var(--muted);margin-top:5px;line-height:1.25;}
+.review-summary-card:hover,.dashboard-open-task:hover{transform:translateY(-1px);box-shadow:var(--shadow-small);}
+.dashboard-open-task{cursor:pointer;border-radius:20px;padding-left:6px;padding-right:6px;transition:.18s ease;}
+.dashboard-open-task:focus{outline:2px solid rgba(148,82,11,.35);outline-offset:3px;}
+.team-pie-list{display:grid;gap:12px;}
+.team-pie-card{display:flex;gap:14px;align-items:center;padding:12px;border-radius:24px;background:rgba(255,255,255,.46);box-shadow:var(--press);}
+.mini-donut{--pct:0;width:70px;height:70px;border-radius:50%;background:conic-gradient(var(--brand-bronze) calc(var(--pct)*1%),#eadfce 0);display:grid;place-items:center;flex:0 0 auto;position:relative;}
+.mini-donut:after{content:"";position:absolute;inset:13px;background:linear-gradient(145deg,#fff8ee,#efe4d7);border-radius:50%;}
+.mini-donut span{position:relative;z-index:1;font-weight:900;color:var(--ink);font-size:13px;}
+.team-pie-card b,.team-pie-card small,.team-pie-card em{display:block;}
+.team-pie-card small{color:var(--muted);margin-top:3px;}
+.team-pie-card em{font-style:normal;color:#8a551d;margin-top:5px;font-size:12px;font-weight:850;}
+.login-security-list{display:grid;gap:10px;}
+.login-session-row{padding:12px;border-radius:20px;background:rgba(255,255,255,.44);box-shadow:var(--press);}
+.login-session-row b,.login-session-row span,.login-session-row small{display:block;}
+.login-session-row span,.login-session-row small{color:var(--muted);margin-top:3px;}
+button,a,.nav-item,.pill,.primary-btn,select,input[type="date"],.dashboard-open-task,.review-summary-card{cursor:pointer;}
+@media(max-width:1100px){.review-summary-grid{grid-template-columns:repeat(2,1fr)}.hero-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:640px){.review-summary-grid{grid-template-columns:1fr}.dashboard-grid{grid-template-columns:1fr}.app-shell{grid-template-columns:1fr}.sidebar nav{grid-template-columns:repeat(3,1fr)}}

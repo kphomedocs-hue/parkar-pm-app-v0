@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Parkar & Associates — Staff Task System v2.6.0</title>
+  <title>Parkar & Associates — Staff Task System v2.6.1</title>
   <link rel="icon" type="image/png" href="assets/parkar-icon.png" />
   <link rel="stylesheet" href="styles.css" />
 </head>
@@ -28,6 +28,8 @@
   <div class="app-shell hidden" id="appShell">
     <aside class="sidebar">
       <div class="brand sidebar-brand"><img class="brand-logo" src="assets/parkar-logo.png" alt="Parkar & Associates logo" /><div><strong>Staff Management</strong><span>Task Control System</span></div></div>
+      <div class="login-user-badge sidebar-user" id="loginUserBadge"></div>
+      <div class="sidebar-user-actions"><button id="logoutBtn" class="ghost-btn compact-logout">Logout</button></div>
       <nav>
         <button class="nav-item active" data-view="dashboard"><span>▦</span> Dashboard</button>
         <button class="nav-item" data-view="tasks"><span>☑</span> Tasks</button>
@@ -37,10 +39,6 @@
         <button class="nav-item" data-view="people"><span>⚙</span> Admin / People</button>
         <button class="nav-item" data-view="audit"><span>◎</span> Audit / Backup</button>
       </nav>
-      <div class="sidebar-footer">
-        <div class="small-title">Practical Team Setup</div>
-        <p>Maximum 2 owners and 30 active people total. IDs stay fixed for task history.</p>
-      </div>
     </aside>
 
     <main class="main">
@@ -50,48 +48,44 @@
           <h1 id="pageTitle">Dashboard</h1>
           <div class="brand-line">Parkar & Associates • Internal Task Control</div>
         </div>
-        <div class="top-actions">
+        <div class="top-actions top-actions-compact">
           <div class="search-wrap"><span>⌕</span><input id="globalSearch" placeholder="Search task, staff, remarks..." /></div>
-          <select id="refreshMode"><option value="manual">Manual refresh</option><option value="4hr">Every 4 hours</option></select>
           <button id="refreshNow" class="ghost-btn">Refresh now</button>
-          <button id="changePinBtn" class="ghost-btn">Change PIN</button>
-          <button id="systemStatusBtn" class="ghost-btn">System Status</button>
-          <button id="logoutBtn" class="ghost-btn">Logout</button>
         </div>
       </header>
-      <div class="login-user-badge" id="loginUserBadge"></div>
-      <div class="refresh-status" id="refreshStatus">Manual refresh only</div>
       <div class="api-mode-banner" id="apiModeBanner">Checking connection...</div>
 
       <section class="view active" id="dashboardView">
         <div class="hero-grid">
-          <div class="kpi-card dark"><div class="kpi-icon">✓</div><p>Total Tasks</p><strong id="kpiTotal">0</strong><span id="kpiScope">Current view</span></div>
+          <div class="kpi-card dark role-owner-only" id="kpiTotalCard"><div class="kpi-icon">✓</div><p>Total Tasks</p><strong id="kpiTotal">0</strong><span id="kpiScope">Current view</span></div>
           <div class="kpi-card"><div class="kpi-icon">⏱</div><p>Open Tasks</p><strong id="kpiOpen">0</strong><span>Pending + active work</span></div>
           <div class="kpi-card"><div class="kpi-icon">⚠</div><p>Overdue</p><strong id="kpiOverdue">0</strong><span>Needs attention</span></div>
-          <div class="kpi-card"><div class="kpi-icon">🏁</div><p>Completed</p><strong id="kpiCompleted">0</strong><span>Closed tasks</span><div class="capacity-pill" id="capacityPill">0/30 People</div></div>
+          <div class="kpi-card" id="kpiApprovalCard"><div class="kpi-icon">📤</div><p>Sent for Approval</p><strong id="kpiApproval">0</strong><span>Ready for check</span></div>
+          <div class="kpi-card role-owner-only" id="kpiCompletedCard"><div class="kpi-icon">🏁</div><p>Completed</p><strong id="kpiCompleted">0</strong><span>Closed tasks</span></div>
         </div>
 
         <div class="dashboard-grid">
-          <article class="panel wide">
+          <article class="panel wide role-owner-only" id="currentStatusPanel">
             <div class="panel-head"><div><h2>Current Task Status</h2><p>Status distribution from current task data</p></div><button class="pill" id="openTasksBtn">All Tasks ›</button></div>
             <div class="status-bars" id="statusBars"></div>
             <div class="legend" id="statusLegend"></div>
           </article>
-          <article class="panel">
-            <div class="panel-head"><div><h2>Quick Suggestion</h2><p>Daily control shortcuts</p></div></div>
-            <div class="quick-cards">
-              <button data-filter="Overdue"><b id="quickOverdue">0</b><span>Overdue</span></button>
-              <button data-filter="Ready for Check"><b id="quickReady">0</b><span>Ready Check</span></button>
-              <button data-filter="Revision Required"><b id="quickRevision">0</b><span>Revision</span></button>
-            </div>
+          <article class="panel wide role-owner-manager-only" id="reviewSummaryPanel">
+            <div class="panel-head"><div><h2>Review Summary</h2><p>Owner/Manager review actions and follow-up items</p></div><button class="pill" data-view-target="update">Open Review ›</button></div>
+            <div class="review-summary-grid" id="reviewSummaryGrid"></div>
+            <div class="task-list review-waiting-list" id="reviewWaitingList"></div>
           </article>
           <article class="panel wide">
             <div class="panel-head"><div><h2>All Task</h2><p>Fast preview of active work</p></div><button class="pill" data-view-target="tasks">All To-do ›</button></div>
             <div class="task-list" id="dashboardTaskList"></div>
           </article>
-          <article class="panel">
-            <div class="panel-head"><div><h2>My Summary Performance</h2><p>Role-based view</p></div></div>
-            <div class="summary-meter"><div class="meter-ring" id="meterRing"><span id="meterText">0%</span></div><div><b id="dailyDone">0/0 Task</b><span>Completed ratio</span><b id="readyLabel">0 Ready for Check</b></div></div>
+          <article class="panel wide" id="approvalListPanel">
+            <div class="panel-head"><div><h2>Sent for Approval</h2><p>Tasks waiting for review / checking</p></div><button class="pill" data-view-target="update">Open Review ›</button></div>
+            <div class="task-list approval-task-list" id="approvalTaskList"></div>
+          </article>
+          <article class="panel team-pie-panel role-owner-manager-only">
+            <div class="panel-head"><div><h2>Latest Team Task Load</h2><p>Pending vs total tasks for the latest 4 people who updated work</p></div></div>
+            <div class="team-pie-list" id="teamPieList"></div>
           </article>
         </div>
       </section>
@@ -118,7 +112,7 @@
             <label>File / Drawing Link<input id="addLink" placeholder="Google Drive / drawing / reference link" /></label>
             <button class="primary-btn" type="submit">Submit New Task</button>
           </form>
-          <article class="panel rules-card"><h2>Workflow Rules</h2><ol><li>Owner/Manager tasks start as <b>Pending</b>; staff self-tasks start as <b>Requested</b> until approved.</li><li>Staff can update only Pending / In Progress / Ready for Check.</li><li>Requested tasks can be approved to Pending or Cancelled; Ready for Check tasks can become Completed or Revision Required.</li><li>Manager can act only on own-team tasks.</li><li>Owner manages people and login PINs from Admin / People.</li><li>Owner can delete wrong tasks and remove staff/manager records. If a person has task history, the app safely deactivates them instead of breaking history.</li></ol></article>
+          <article class="panel rules-card"><h2>Workflow Rules</h2><ol><li>New assigned tasks start as <b>Pending</b>; staff self-tasks start as <b>Requested</b> until approved.</li><li>Staff can update a task and use <b>Ready for Check</b> to send finished work for review.</li><li>The same Task ID can become <b>Completed</b> or <b>Revision Required</b>. No new Task ID is created for correction.</li><li>Manager can act only on own-team tasks.</li></ol></article>
         </div>
       </section>
 
@@ -128,6 +122,7 @@
             <h2 id="updateTitle">Update Task</h2>
             <label>Task ID<select id="updateTaskId"></select></label>
             <label id="statusLabel">New Status<select id="updateStatus"></select></label>
+            <div id="updateFlowHint" class="staff-capacity-note">Staff can send finished work for review. Owner/Manager can complete or send it back for correction using the same Task ID.</div>
             <label>Remarks<textarea id="updateRemarks" required placeholder="Add progress / review remarks..."></textarea></label>
             <button class="primary-btn" type="submit">Submit Update</button>
           </form>
@@ -142,6 +137,15 @@
           <form class="panel form-card" id="personForm">
             <h2>People Management</h2>
             <p id="peopleHelp">Owner can add and edit people. Manager can edit own staff.</p>
+            <div class="admin-console-card">
+              <div class="small-title">Admin Console</div>
+              <div class="admin-console-grid">
+                <label>Refresh Mode<select id="refreshMode"><option value="manual">Manual refresh</option><option value="4hr">Every 4 hours</option></select></label>
+                <button id="changePinBtn" class="ghost-btn" type="button">Change PIN</button>
+                <button id="systemStatusBtn" class="ghost-btn" type="button">System Status</button>
+              </div>
+              <div class="refresh-status admin-refresh-status" id="refreshStatus">Manual refresh only</div>
+            </div>
             <input type="hidden" id="personEditingCode" />
             <label>Person ID<input id="personCode" placeholder="Auto ID" readonly /></label>
             <label>Name<input id="personName" placeholder="Full name" required /></label>
@@ -156,6 +160,10 @@
           <div class="panel table-card people-card">
             <div class="panel-head"><div><h2>Owner / Manager / Staff</h2><p>IDs remain fixed. Names, emails, PINs, role, active status and safe deletion can be managed.</p></div></div>
             <div class="people-list" id="peopleList"></div>
+          </div>
+          <div class="panel table-card login-security-card" id="loginSecurityPanel">
+            <div class="panel-head"><div><h2>Login Security</h2><p>Last 3 login sessions per visible user, IP/location changes, and session duration.</p></div></div>
+            <div class="login-security-list" id="loginSecurityList"></div>
           </div>
         </div>
       </section>

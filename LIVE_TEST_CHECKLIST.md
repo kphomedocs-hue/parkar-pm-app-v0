@@ -21,11 +21,11 @@ https://script.google.com/macros/s/AKfycbzIOC31eWS8NNq0jFUnfMyV0JaF2CxE0lcgJlo60
 
 | User | Login Code / Email | PIN | Expected Role |
 |---|---:|---:|---|
-| Ar. Kartik Verma | `O001` or `Ar.kartikverma@gmail.com` | `1235` | Owner |
-| Gitanjali | `M001` | `1234` | Manager |
-| Ali | `S001` | `1234` | Staff |
+| Demo Owner | `O001` or `owner@example.com` | demo PIN only | Owner |
+| Demo Manager | `M001` | demo PIN only | Manager |
+| Demo Staff | `S001` | demo PIN only | Staff |
 
-Note: Gitanjali and Ali should not share one email. Gitanjali uses M001; Ali uses S001. Change one PIN later for better security.
+Note: public frontend files use demo identities only. Use real live PINs only in Apps Script / Sheet backend setup.
 
 ## Functional live tests
 
@@ -33,7 +33,7 @@ Note: Gitanjali and Ali should not share one email. Gitanjali uses M001; Ali use
 - Manager login
 - Staff login
 - Bootstrap data read from Google Sheet
-- Owner adds task for Ali
+- Owner adds task for Demo Staff
 - Manager adds/reviews own-team task
 - Staff adds self-task
 - Staff updates task to Ready for Check
@@ -66,16 +66,14 @@ Do not rename these asset files unless you also update `index.html`.
 
 
 ## v2.6.1 navigation/role checks
-- Owner: Dashboard shows Admin / People and Audit / Backup shortcuts.
-- Manager: Dashboard shows Admin / People only. Audit / Backup is hidden.
-- Staff: Dashboard hides Admin / People and Audit / Backup.
-- Dashboard task rows open Update / Review directly.
+- Owner: sidebar shows Dashboard, Tasks, Team, Admin, and Logout.
+- Manager: sidebar shows Dashboard, Tasks, Team, Admin, and Logout; owner-only Admin tabs are hidden.
+- Staff: sidebar shows Dashboard, Tasks, Team, and Logout; Admin is hidden.
+- Dashboard stays summary-focused.
 - Top navigation dropdown is removed; left sidebar remains the navigation source.
 
 ## v2.6.1 login security checks
-- Run `setupInitialSheets()` again after updating Apps Script to create `BE_Login Sessions`.
 - Login as Owner, Manager, and Staff.
-- Open Admin / People as Owner and confirm Login Security shows last sessions.
-- Logout normally and confirm session duration updates.
-- Change network/IP or test from mobile hotspot and confirm `IP_CHANGED` appears in Audit / Backup.
-- Optional: set `SECURITY_ALERT_EMAIL` and confirm email alert on IP change.
+- Open Admin → Login Security as Owner and confirm login/security audit events show when available.
+- If there is no live login audit data yet, confirm a clean empty state appears.
+- Do not test IP change or GPS/geolocation capture; this frontend package does not collect that data.

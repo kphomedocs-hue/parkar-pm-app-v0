@@ -1,6 +1,6 @@
 {
   "brand": "Parkar and Associates",
-  "version": "2.6.1-timeout-fixed",
+  "version": "2.6.1-final-safety-fixed",
   "limits": {
     "maxOwners": 2,
     "maxActivePeople": 30
@@ -8,37 +8,37 @@
   "staff": [
     {
       "code": "O001",
-      "name": "Ar. Kartik Verma",
+      "name": "Demo Owner",
       "role": "Owner",
-      "email": "Ar.kartikverma@gmail.com",
+      "email": "owner@example.com",
       "pin": "0000",
       "managerCode": "",
       "active": "Yes",
-      "notes": "Primary owner. Demo PIN only; set real PIN in Apps Script private setup.",
+      "notes": "Demo owner record for offline preview only. Set real users and PINs in Apps Script private setup.",
       "failedAttempts": 0,
       "lockedUntil": ""
     },
     {
       "code": "M001",
-      "name": "Gitanjali",
+      "name": "Demo Manager",
       "role": "Manager",
-      "email": "",
+      "email": "manager@example.com",
       "pin": "0000",
       "managerCode": "O001",
       "active": "Yes",
-      "notes": "Reporting manager for Ali. Demo PIN only; login with M001 + PIN until a unique manager email is added.",
+      "notes": "Demo manager record for offline preview only. Set real users and PINs in Apps Script private setup.",
       "failedAttempts": 0,
       "lockedUntil": ""
     },
     {
       "code": "S001",
-      "name": "Ali",
+      "name": "Demo Staff",
       "role": "Staff",
-      "email": "Staff@parkar.associates",
+      "email": "staff@example.com",
       "pin": "0000",
       "managerCode": "M001",
       "active": "Yes",
-      "notes": "Starting staff record. Demo PIN only; set real PIN in Apps Script private setup.",
+      "notes": "Demo staff record for offline preview only. Set real users and PINs in Apps Script private setup.",
       "failedAttempts": 0,
       "lockedUntil": ""
     }

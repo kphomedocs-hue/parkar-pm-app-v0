@@ -8,13 +8,9 @@
 - Projects module: Removed
 
 ## Initial live records
-The app is prepared for these starting records:
+The frontend `data.json` uses demo-only preview records. Real office records are created by Apps Script during backend setup and are not stored in public GitHub files.
 
-| Code | Name | Role | Email / Login | Manager |
-|---|---|---|---|---|
-| O001 | Ar. Kartik Verma | Owner | Ar.kartikverma@gmail.com | - |
-| M001 | Gitanjali | Manager | Code login: M001 (email can be added later) | O001 |
-| S001 | Ali | Staff | Staff Code: S001 / Email saved: Staff@parkar.associates | M001 |
+Live starting records are configured in the Apps Script backend / Script Properties, not in `data.json`.
 
 Important: real PINs are not stored in frontend files or data.json. Enter PINs only inside Apps Script / Script Properties during backend setup.
 
@@ -22,9 +18,9 @@ Important: real PINs are not stored in frontend files or data.json. Enter PINs o
 In Apps Script, set these Script Properties:
 
 - INITIAL_OWNER_PIN = your owner PIN
-- INITIAL_ALI_PIN and INITIAL_GITANJALI_PIN = Ali's staff PIN
+- INITIAL_ALI_PIN and INITIAL_GITANJALI_PIN = starting staff/manager PINs
 
-Gitanjali is seeded without a duplicate email. She can login with M001 + PIN; add a unique email later from Admin / People if needed.
+Manager and staff details can be updated later from Admin / People.
 
 ## Apps Script setup steps
 1. Create a fresh Google Sheet.
@@ -84,24 +80,10 @@ Do not rename these asset files unless you also update `index.html`.
 
 
 ## v2.6.1 navigation note
-The left sidebar is the main navigation. Dashboard office shortcuts are role-aware and separate from the task page.
+The left sidebar is the main navigation. Dashboard shortcuts were removed; use Dashboard, Tasks, Team, Admin, and Logout from the sidebar.
 
 ## v2.6.1 login security tracking
-This build adds a `BE_Login Sessions` sheet for login security tracking.
+This build shows login/security audit events inside Admin → Login Security when those events are available from the backend/audit log.
 
-During Apps Script setup or upgrade, run `setupInitialSheets()` once again. It will add missing sheets/headers without deleting existing data.
+This frontend build does **not** collect public IP, GPS/geolocation, or browser location permission data. Any IP/geolocation email alert workflow should be treated as a future optional backend/privacy feature, not a current live requirement.
 
-Login tracking fields include:
-- Login time
-- Logout time
-- Session duration in minutes when the user logs out normally
-- Public IP address when available
-- IP changed flag
-- Browser/device label
-- Time zone
-- Browser location status or GPS coordinates if the user allows browser location permission
-
-Optional email alert:
-Set Script Property `SECURITY_ALERT_EMAIL` to the owner/security email address. When a user logs in from a different detected public IP, Apps Script will create an `IP_CHANGED` audit log and try to email that address.
-
-Important: Google Apps Script web apps do not reliably expose the visitor IP directly to server code. The frontend asks the browser to read public IP through `api.ipify.org`. If that request is blocked, IP will show as unavailable.

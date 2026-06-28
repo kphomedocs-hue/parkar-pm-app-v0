@@ -17,7 +17,7 @@ This version prepares the app for GitHub Pages + Google Apps Script + fresh Goog
 
 ## Security
 - Real PINs should only be entered in Apps Script / backend setup.
-- Frontend data.json uses preview/demo values only.
+- Frontend data.json uses demo-only values only; real users/PINs stay in Apps Script/Google Sheet setup.
 - Backend Apps Script stores salted SHA-256 PIN hashes.
 - Session tokens are signed and checked on every write action.
 - Failed login lockout is included.
@@ -54,7 +54,7 @@ Included before GitHub upload: request integrity enforcement, duplicate submit f
 
 ## v2.6.1 navigation cleanup
 - Top navigation dropdown removed because the left sidebar is the primary navigation.
-- Dashboard Office Controls shortcuts removed; Admin / People and Audit / Backup remain in the left sidebar only, role-controlled.
+- Dashboard Office Controls shortcuts removed; Admin and Audit/Backup are accessed through the Admin section, role-controlled.
 - Dashboard task preview rows remain linked directly to Update / Review for that task.
 
 
@@ -64,12 +64,9 @@ Included before GitHub upload: request integrity enforcement, duplicate submit f
 - Staff sends existing task to Ready for Check; Owner/Manager reviews same Task ID as Completed or Revision Required.
 
 ## v2.6.1 Login security tracking
-- Admin / People now includes Login Security.
-- Shows last three login sessions per visible user.
-- Tracks login time, logout time, duration, public IP when available, browser/device, timezone, and location permission result/GPS coordinate if allowed.
-- New IP address is logged as a security event.
-- Optional Apps Script property `SECURITY_ALERT_EMAIL` enables email notification for IP changes.
-
+- Admin → Login Security shows login/security audit events when the backend/audit log provides them.
+- This frontend does not collect IP address, GPS/geolocation, or browser location permission data.
+- IP-change email alerts are not part of this final frontend package.
 
 ## v2.6.1 final workflow update
 - Staff cannot see completed tasks.

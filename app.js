@@ -2,11 +2,12 @@ const DATA_URL = 'data.json';
 // GitHub Pages frontend connects to Google Apps Script through this URL.
 // After deploying Apps Script as Web App, paste the Web App URL here. Keep blank only for local UI preview.
 const API_URL = 'https://script.google.com/macros/s/AKfycbzIOC31eWS8NNq0jFUnfMyV0JaF2CxE0lcgJlo60UZv-gmbioNzvPnGA5DNFwdRQdBZ/exec'; // visual QA demo mode
-const APP_VERSION = '2.6.1-timeout-fixed';
+const APP_VERSION = '2.6.1-final-safety-fixed';
 const STORAGE_KEY = 'parkar-task-app-v2-6-1-deployment-preview';
 const SESSION_KEY = 'parkar-session-v2-6-1-secure';
 const REFRESH_MODE_KEY = 'parkar-refresh-mode-v1';
 const FOUR_HOUR_MS = 4 * 60 * 60 * 1000;
+const REQUEST_TIMEOUT_MS = 25000;
 const PRIORITY_ORDER = { Urgent: 1, High: 2, Medium: 3, Low: 4 };
 let master = null;
 let state = null;
@@ -20,26 +21,38 @@ let sessionUser = null;
 const $ = (id) => document.getElementById(id);
 const clean = (txt='') => String(txt ?? '').trim();
 const todayISO = () => new Date().toISOString().slice(0,10);
-function formatDateReadable(value){
-  const raw = clean(value);
-  if(!raw) return '-';
-  const d = new Date(raw);
-  if(!Number.isNaN(d.getTime())) return d.toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'});
-  return raw;
-}
 const addDays = (n) => { const d = new Date(); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); };
-function formatDateReadable(value){
-  const raw = clean(value);
-  if(!raw) return '-';
-  const d = new Date(raw);
-  if(Number.isNaN(d.getTime())) return raw;
-  return d.toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' });
-}
 const isDeleted = (t) => String(t.deleted || 'No') === 'Yes';
 const isOpen = (t) => !['Completed','Cancelled'].includes(t.status) && !isDeleted(t);
 const isOverdue = (t) => t.dueDate && new Date(t.dueDate) < new Date(todayISO()) && isOpen(t);
 const cssToken = (value='') => clean(value).replace(/[^a-zA-Z0-9_-]/g, '-');
 const statusClass = s => cssToken(s).replaceAll(' ','-');
+const STATUS_LABELS = {
+  'Requested': 'Waiting Approval',
+  'Ready for Check': 'Sent for Review',
+  'Revision Required': 'Needs Correction'
+};
+function statusLabel(status){ return STATUS_LABELS[clean(status)] || clean(status); }
+const QUICK_VIEW_LABELS = {
+  'All Tasks': 'All',
+  'Open Tasks': 'Active',
+  'Completed History': 'Completed',
+  'Deleted / Archive': 'Deleted / Archive',
+  'No Update 3 Days': 'No Update 3 Days',
+  'Due Next 7 Days': 'Due Next 7 Days'
+};
+function optionDisplayLabel(value){ return QUICK_VIEW_LABELS[clean(value)] || statusLabel(value); }
+function isCompletedThisMonth(t){
+  if(t.status !== 'Completed' || !t.completedDate) return false;
+  const now = new Date();
+  const d = new Date(t.completedDate);
+  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+}
+function lastUpdatedForPerson(code){
+  const dates = (state?.tasks || []).filter(t=>t.assignedTo===code && !isDeleted(t) && t.lastUpdated).map(t=>t.lastUpdated).sort();
+  return dates.length ? dates[dates.length-1] : '-';
+}
+function emptyState(message){ return `<div class="empty-state"><span>${escapeHtml(message)}</span></div>`; }
 function safeUrl(value){
   const url = clean(value);
   if(!url) return '';
@@ -95,11 +108,9 @@ function visiblePeopleCodes(){
   return [user.code];
 }
 function visibleTasks(includeDeleted=false){
-  const user = currentUser();
   const codes = visiblePeopleCodes();
   const q = clean($('globalSearch')?.value).toLowerCase();
   let rows = state.tasks.filter(t=>(includeDeleted || !isDeleted(t)) && (codes.includes(t.assignedTo) || codes.includes(t.createdBy)));
-  if(user?.role === 'Staff') rows = rows.filter(t => t.status !== 'Completed');
   if(q){ rows = rows.filter(t => Object.values(t).some(v => clean(v).toLowerCase().includes(q)) || clean(personByCode(t.assignedTo)?.name).toLowerCase().includes(q)); }
   return rows;
 }
@@ -172,19 +183,28 @@ async function apiPost(body){
   if(!API_URL) return null;
   const finalBody = { ...body, nonce: genNonce(), ts: Date.now(), clientVersion: APP_VERSION };
   if(sessionToken && !finalBody.token) finalBody.token = sessionToken;
-  const res = await fetch(API_URL, { method:'POST', body: JSON.stringify(finalBody), headers: {'Content-Type':'text/plain;charset=utf-8'} });
-  const payload = await res.json();
-  if(!payload.ok){
-    const msg = payload.error || 'Request failed';
-    if(isSessionErrorMessage(msg)){
-      handleExpiredSession('Session expired. Please login again.');
-      const err = new Error('Session expired. Please login again.');
-      err.sessionHandled = true;
-      throw err;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try{
+    const res = await fetch(API_URL, { method:'POST', body: JSON.stringify(finalBody), headers: {'Content-Type':'text/plain;charset=utf-8'}, signal: controller.signal });
+    const payload = await res.json();
+    if(!payload.ok){
+      const msg = payload.error || 'Request failed';
+      if(isSessionErrorMessage(msg)){
+        handleExpiredSession('Session expired. Please login again.');
+        const err = new Error('Session expired. Please login again.');
+        err.sessionHandled = true;
+        throw err;
+      }
+      throw new Error(msg);
     }
-    throw new Error(msg);
+    return payload;
+  }catch(err){
+    if(err?.name === 'AbortError') throw new Error('Request timed out. Please retry.');
+    throw err;
+  }finally{
+    clearTimeout(timeout);
   }
-  return payload;
 }
 function isSessionErrorMessage(msg=''){ return /session expired|session signature failed|login required|invalid session token|missing session token/i.test(String(msg)); }
 function handleExpiredSession(message='Session expired. Please login again.'){ clearSession(); if(refreshTimer) clearInterval(refreshTimer); refreshTimer = null; showLogin(); toast(message); }
@@ -210,7 +230,7 @@ function prepareLoginScreen(){
   const demo = document.querySelector('.demo-logins');
   if(demo) demo.remove();
   if(!API_URL){
-    $('loginEmail').value = 'Ar.kartikverma@gmail.com';
+    $('loginEmail').value = 'owner@example.com';
     $('loginPin').value = '0000';
   }
 }
@@ -277,21 +297,24 @@ function bindEvents(){
   $('systemStatusBtn')?.addEventListener('click',runSystemStatusCheck);
   document.querySelectorAll('.nav-item').forEach(btn=>btn.addEventListener('click',()=>showView(btn.dataset.view)));
   document.querySelectorAll('[data-view-target]').forEach(btn=>btn.addEventListener('click',()=>showView(btn.dataset.viewTarget)));
-  $('openTasksBtn')?.addEventListener('click',()=>showView('tasks'));
-  $('globalSearch')?.addEventListener('input',renderAll);
-  ['filterQuick','filterPriority','filterStaff','sortBy'].forEach(id=>$(id)?.addEventListener('change',renderTaskTable));
-  document.querySelectorAll('.quick-cards button').forEach(b=>b.addEventListener('click',()=>{ showView('tasks'); $('filterQuick').value=b.dataset.filter; renderTaskTable(); }));
-  $('refreshNow')?.addEventListener('click',()=>refreshFromBackend('manual'));
-  if($('refreshMode')){ $('refreshMode').value = storageGet(REFRESH_MODE_KEY) || 'manual'; $('refreshMode').addEventListener('change',setupRefreshTimer); }
+  $('globalSearch').addEventListener('input',renderAll);
+  ['filterQuick','filterPriority','filterStaff','sortBy'].forEach(id=>$(id).addEventListener('change',renderTaskTable));
+  $('refreshNow').addEventListener('click',()=>refreshFromBackend('manual'));
+  $('refreshMode').value = storageGet(REFRESH_MODE_KEY) || 'manual'; $('refreshMode').addEventListener('change',setupRefreshTimer);
   $('addTaskForm').addEventListener('submit',submitNewTask);
   $('updateForm').addEventListener('submit',submitUpdate);
   $('updateTaskId').addEventListener('change',renderSelectedTaskDetail);
+  $('taskSideForm')?.addEventListener('submit', submitTaskSideForm);
+  $('closeTaskSidePanel')?.addEventListener('click', closeTaskSidePanel);
+  $('sideNeedsCorrection')?.addEventListener('click', () => quickSideStatus('Revision Required'));
+  $('sideMarkCompleted')?.addEventListener('click', () => quickSideStatus('Completed'));
+  document.querySelectorAll('[data-team-tab]').forEach(btn=>btn.addEventListener('click',()=>showTeamTab(btn.dataset.teamTab)));
+  document.querySelectorAll('[data-admin-tab]').forEach(btn=>btn.addEventListener('click',()=>showAdminTab(btn.dataset.adminTab)));
   $('personForm').addEventListener('submit',submitPerson);
   $('personRole').addEventListener('change',renderPersonFormRules);
+  $('clearPersonFormBtn')?.addEventListener('click', clearPersonForm);
   document.addEventListener('click', handlePeopleActions);
   document.addEventListener('click', handleTaskDeleteActions);
-  document.addEventListener('click', handleDashboardTaskOpen);
-  document.addEventListener('keydown', handleDashboardTaskKey);
   $('editTaskForm')?.addEventListener('submit', submitTaskEdit);
   $('cancelEditTask')?.addEventListener('click',()=>$('taskEditModal').classList.add('hidden'));
   $('closeSystemStatus')?.addEventListener('click',()=>$('systemStatusModal').classList.add('hidden'));
@@ -311,22 +334,32 @@ function initDynamicControls(){
   fillSelect('personRole', ['Staff','Manager','Owner'], 'Staff');
 }
 function optionHtml(value, label=value){ return `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`; }
-function fillSelect(id, items, selected){ const el=$(id); if(!el) return; el.innerHTML = items.map(x=>optionHtml(x)).join(''); if(selected) el.value = selected; }
+function fillSelect(id, items, selected){ const el=$(id); if(!el) return; el.innerHTML = items.map(x=>optionHtml(x, optionDisplayLabel(x))).join(''); if(selected) el.value = selected; }
 function showView(view){
+  const previousView = currentView;
   currentView=view;
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
-  $(`${view}View`).classList.add('active');
-  document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active', b.dataset.view===view));
-  const titles={dashboard:'Dashboard',tasks:'Tasks',add:'Add Task',update:'Update / Review',team:'Team',people:'Admin / People',audit:'Audit / Backup'};
-  $('pageTitle').textContent=titles[view] || 'Dashboard';
+  const target = $(`${view}View`);
+  if(!target){ currentView='dashboard'; $('dashboardView')?.classList.add('active'); }
+  else target.classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(b=>{
+    const group = ['add','update'].includes(view) ? 'tasks' : ['people','audit'].includes(view) ? 'people' : view;
+    b.classList.toggle('active', b.dataset.view===group);
+  });
+  const titles={dashboard:'Dashboard',tasks:'Tasks',add:'Tasks',update:'Tasks',team:'Team',people:'Admin',audit:'Admin'};
+  $('pageTitle').textContent=titles[currentView] || 'Dashboard';
+  if(previousView === 'tasks' && currentView !== 'tasks') closeTaskSidePanel();
   renderAll();
 }
 function updateNavPermissions(){
   const user = currentUser();
-  document.querySelector('[data-view="people"]').style.display = ['Owner','Manager'].includes(user.role) ? '' : 'none';
-  document.querySelector('[data-view="audit"]').style.display = user.role === 'Owner' ? '' : 'none';
-  if(user.role === 'Staff' && currentView === 'people') showView('dashboard');
+  const adminNav = document.querySelector('[data-view="people"]');
+  if(adminNav) adminNav.style.display = ['Owner','Manager'].includes(user.role) ? '' : 'none';
+  document.querySelectorAll('.owner-only-tab').forEach(el=>{ el.style.display = user.role === 'Owner' ? '' : 'none'; });
+  if(user.role === 'Staff' && ['people','audit'].includes(currentView)) showView('dashboard');
   if(user.role !== 'Owner' && currentView === 'audit') showView('dashboard');
+  const latestBtn = $('latestActivityBtn');
+  if(latestBtn) latestBtn.style.display = user.role === 'Owner' ? '' : 'none';
   const statusBtn = $('systemStatusBtn');
   if(statusBtn) statusBtn.style.display = user.role === 'Owner' ? '' : 'none';
 }
@@ -351,7 +384,7 @@ function renderAll(){
   const user=currentUser();
   $('loginUserBadge').innerHTML = `<b>${escapeHtml(user.name)}</b><span>${escapeHtml(user.role)} · ${escapeHtml(user.email || user.code)}</span>`;
   refreshFilterSelects();
-  renderDashboard(); renderTaskTable(); renderUpdateOptions(); renderTeam(); renderPeople(); renderPersonFormRules(); renderAudit(); renderLoginSecurity(); refreshStatusText();
+  renderDashboard(); renderTaskTable(); renderUpdateOptions(); renderTeam(); renderPeople(); renderPersonFormRules(); renderAudit(); renderTeamWorkload(); renderLoginSecurity(); refreshStatusText();
   $('addHelp').textContent = user.role==='Owner' ? 'Owner can assign to any active owner, manager or staff.' : user.role==='Manager' ? 'Manager can assign only to self or own team.' : 'Staff can add only their own self-task/request.';
   $('updateTitle').textContent = user.role==='Staff' ? 'Staff Progress Update' : `${user.role} Review Action`;
 }
@@ -362,95 +395,78 @@ function filteredTaskRows(){
   if(fs && fs!=='ALL') rows = rows.filter(t=>t.assignedTo===fs);
   return sortedRows(rows, $('sortBy').value);
 }
+function dashboardLabelByRole(user, key){
+  const isStaff = user?.role === 'Staff';
+  const isManager = user?.role === 'Manager';
+  const labels = {
+    open: isStaff ? 'My Open Tasks' : isManager ? 'Team Open Tasks' : 'Open Tasks',
+    overdue: isStaff ? 'My Overdue' : 'Overdue',
+    review: isStaff ? 'Sent for Review' : 'Waiting Review',
+    completed: 'Completed This Month'
+  };
+  return labels[key];
+}
 function renderDashboard(){
   const user=currentUser();
   const rows = visibleTasks();
-  const open = rows.filter(isOpen).length;
-  const overdue = rows.filter(isOverdue).length;
-  const done = rows.filter(t=>t.status==='Completed').length;
-  const ready = rows.filter(t=>t.status==='Ready for Check' && !isDeleted(t)).length;
-  const requested = rows.filter(t=>t.status==='Requested' && !isDeleted(t)).length;
-  const revision = rows.filter(t=>t.status==='Revision Required' && !isDeleted(t)).length;
-  const stale = rows.filter(noUpdate3Days).length;
-  if($('kpiTotal')) $('kpiTotal').textContent=rows.length;
-  if($('kpiOpen')) $('kpiOpen').textContent=open;
-  if($('kpiOverdue')) $('kpiOverdue').textContent=overdue;
-  if($('kpiCompleted')) $('kpiCompleted').textContent=done;
-  if($('kpiApproval')) $('kpiApproval').textContent=ready;
-  if($('kpiScope')) $('kpiScope').textContent = `${user?.role || ''} view`;
-  const ownerOnly = user?.role === 'Owner';
-  document.querySelectorAll('.role-owner-only').forEach(el=>el.classList.toggle('hidden', !ownerOnly));
-  document.querySelectorAll('.role-owner-manager-only').forEach(el=>el.classList.toggle('hidden', !['Owner','Manager'].includes(user?.role)));
-  document.querySelectorAll('.role-staff-hide').forEach(el=>el.classList.toggle('hidden', user?.role === 'Staff'));
+  const openRows = rows.filter(isOpen);
+  const reviewRows = user?.role === 'Staff' ? rows.filter(t=>t.status==='Ready for Check') : rows.filter(t=>['Ready for Check','Requested'].includes(t.status));
+  const completedMonthRows = rows.filter(isCompletedThisMonth);
+  $('kpiOpenLabel').textContent = dashboardLabelByRole(user,'open');
+  $('kpiOverdueLabel').textContent = dashboardLabelByRole(user,'overdue');
+  $('kpiApprovalLabel').textContent = dashboardLabelByRole(user,'review');
+  $('kpiOpen').textContent=openRows.length;
+  $('kpiOverdue').textContent=rows.filter(isOverdue).length;
+  $('kpiApproval').textContent=reviewRows.length;
+  $('kpiCompleted').textContent=completedMonthRows.length;
 
-  const statuses=['Pending','In Progress','Ready for Check','Revision Required','Completed'];
-  const max = Math.max(1,...statuses.map(s=>rows.filter(t=>t.status===s).length));
-  if($('statusBars')) $('statusBars').innerHTML = statuses.map((s,i)=>{ const n=rows.filter(t=>t.status===s).length; const h=24+(n/max)*120; return `<div class="bar-wrap"><div class="bar ${i%3===1?'alt':i%3===2?'warn':''}" style="height:${h}px" title="${s}: ${n}"></div><div class="bar-label">${s}<br><b>${n}</b></div></div>`}).join('');
-  if($('statusLegend')) $('statusLegend').innerHTML = statuses.map(s=>`<span>● ${s}</span>`).join('');
+  const attention = [
+    ...rows.filter(t=>isOverdue(t) && ['Urgent','High'].includes(t.priority)).map(t=>({type:'Overdue', task:t})),
+    ...reviewRows.map(t=>({type:t.status==='Requested'?'Approval':'Review', task:t})),
+    ...rows.filter(t=>t.status==='Revision Required').map(t=>({type:'Correction', task:t}))
+  ].slice(0,6);
+  $('attentionTitle').textContent = user?.role === 'Staff' ? 'My Next Actions' : 'Needs Attention';
+  $('attentionList').innerHTML = attention.length ? attention.map(({type,task:t})=>`<div class="task-row compact"><div class="circle"></div><div><div class="task-title">${escapeHtml(t.taskDescription)}</div><div class="task-meta">${escapeHtml(type)} · ${escapeHtml(statusLabel(t.status))} · Due ${escapeHtml(t.dueDate || '-')}</div></div><span class="badge ${cssToken(t.priority)}">${escapeHtml(t.priority)}</span></div>`).join('') : emptyState(user?.role === 'Staff' ? 'No urgent next action.' : 'No urgent action pending.');
 
-  const preview = sortedRows(applyQuick(rows,'Open Tasks'),'Due Date').slice(0,5);
-  if($('dashboardTaskList')) $('dashboardTaskList').innerHTML = preview.length ? preview.map(taskRow).join('') : `<p>No active tasks in this view.</p>`;
-  const approvalRows = sortedRows(rows.filter(t=>t.status==='Ready for Check' && !isDeleted(t)),'Due Date').slice(0,6);
-  if($('approvalTaskList')) $('approvalTaskList').innerHTML = approvalRows.length ? approvalRows.map(taskRow).join('') : `<p>No tasks currently sent for approval.</p>`;
+  renderManagerStaffSummary(rows, user);
 
-  if($('reviewSummaryGrid')){
-    const cards = [
-      ['Ready for Check', ready, 'Staff has sent work for review', 'Ready for Check'],
-      ['Requested Tasks', requested, 'Staff task requests need approval', 'Requested'],
-      ['Revision Required', revision, 'Sent back for correction', 'Revision Required'],
-      ['No Update 3 Days', stale, 'Needs follow-up', 'No Update 3 Days'],
-      ['Overdue', overdue, 'Due date crossed', 'Overdue']
-    ];
-    $('reviewSummaryGrid').innerHTML = cards.map(([label,count,hint,filter])=>`<button class="review-summary-card" data-review-filter="${escapeHtml(filter)}"><b>${count}</b><span>${escapeHtml(label)}</span><small>${escapeHtml(hint)}</small></button>`).join('');
+  const auditActivity = (state.auditLogs || []).slice(0,6);
+  const taskActivity = rows.flatMap(t => (t.timeline || []).map(x=>({ ...x, taskId:t.taskId, taskDescription:t.taskDescription }))).sort((a,b)=>clean(b.date).localeCompare(clean(a.date))).slice(0,6);
+  if(auditActivity.length){
+    $('latestActivityList').innerHTML = auditActivity.map(a=>`<div class="task-row compact"><div class="circle"></div><div><div class="task-title">${escapeHtml(a.action || 'Activity')}</div><div class="task-meta">${escapeHtml(a.time || '')} · ${escapeHtml(personByCode(a.by)?.name || a.by || 'System')} · ${escapeHtml(a.target || '')}</div></div></div>`).join('');
+  } else {
+    $('latestActivityList').innerHTML = taskActivity.length ? taskActivity.map(a=>`<div class="task-row compact"><div class="circle"></div><div><div class="task-title">${escapeHtml(statusLabel(a.action || 'Updated'))}: ${escapeHtml(a.taskDescription)}</div><div class="task-meta">${escapeHtml(a.date || '')} · ${escapeHtml(personByCode(a.by)?.name || a.by || 'System')} · ${escapeHtml(a.taskId || '')}</div></div></div>`).join('') : emptyState('No recent activity yet.');
   }
-  if($('reviewWaitingList')){
-    const waitRows = sortedRows(rows.filter(t=>['Ready for Check','Requested','Revision Required'].includes(t.status) && !isDeleted(t)),'Due Date').slice(0,6);
-    $('reviewWaitingList').innerHTML = waitRows.length ? waitRows.map(taskRow).join('') : `<p>No review/correction items right now.</p>`;
+}
+function renderManagerStaffSummary(rows, user){
+  const panel=$('managerSummaryPanel');
+  const head=$('managerSummaryHead');
+  const body=$('managerSummaryBody');
+  if(!panel || !head || !body) return;
+  if(user?.role === 'Staff'){
+    panel.style.display='none';
+    return;
   }
-
-  renderTeamPie(rows);
+  panel.style.display='';
+  $('managerSummaryTitle').textContent = user?.role === 'Owner' ? 'Manager / Staff Summary' : 'Staff Summary';
+  head.innerHTML = '<tr><th>Person / Team</th><th>Staff</th><th>Open</th><th>Overdue</th><th>Review</th></tr>';
+  let summary=[];
+  if(user?.role === 'Owner'){
+    const managers = activePeople().filter(p=>p.role==='Manager');
+    summary = managers.map(m=>{
+      const staffCodes = activePeople().filter(p=>p.managerCode===m.code).map(p=>p.code);
+      const taskRows = rows.filter(t=>staffCodes.includes(t.assignedTo) || t.assignedTo===m.code);
+      return { label:m.name, staff:staffCodes.length, rows:taskRows };
+    });
+    const unassigned = rows.filter(t=>!personByCode(t.assignedTo)?.managerCode && personByCode(t.assignedTo)?.role==='Staff');
+    if(unassigned.length) summary.push({label:'Unassigned', staff:'-', rows:unassigned});
+  } else {
+    const staff = activePeople().filter(p=>p.managerCode===user.code || p.code===user.code);
+    summary = staff.map(p=>({ label:p.name, staff:p.role, rows:rows.filter(t=>t.assignedTo===p.code) }));
+  }
+  body.innerHTML = summary.length ? summary.map(x=>`<tr><td><b>${escapeHtml(x.label)}</b></td><td>${escapeHtml(x.staff)}</td><td>${x.rows.filter(isOpen).length}</td><td>${x.rows.filter(isOverdue).length}</td><td>${x.rows.filter(t=>['Ready for Check','Requested'].includes(t.status)).length}</td></tr>`).join('') : '<tr><td colspan="5">No team workload yet.</td></tr>';
 }
-
-function renderTeamPie(rows){
-  const box=$('teamPieList'); if(!box) return;
-  const user=currentUser();
-  if(user?.role === 'Staff'){ box.innerHTML=''; return; }
-  const candidates = activePeople().filter(p=>['Manager','Staff'].includes(p.role) && visiblePeopleCodes().includes(p.code));
-  const peopleWithData = candidates.map(p=>{
-    const tasks = rows.filter(t=>t.assignedTo===p.code && !isDeleted(t));
-    const pending = tasks.filter(t=>['Requested','Pending','In Progress','Revision Required','Ready for Check'].includes(t.status)).length;
-    const latest = tasks.map(t=>new Date(t.lastUpdated || t.dateAssigned || 0).getTime()).sort((a,b)=>b-a)[0] || 0;
-    return {p,tasks,pending,total:tasks.length,latest};
-  }).filter(x=>x.total>0).sort((a,b)=>b.latest-a.latest).slice(0,4);
-  if(!peopleWithData.length){ box.innerHTML='<p>No team task data yet.</p>'; return; }
-  box.innerHTML = peopleWithData.map(x=>{
-    const pct = x.total ? Math.round(x.pending/x.total*100) : 0;
-    return `<div class="team-pie-card"><div class="mini-donut" style="--pct:${pct}"><span>${x.pending}/${x.total}</span></div><div><b>${escapeHtml(x.p.name)}</b><small>${escapeHtml(x.p.role)} · ${escapeHtml(x.p.code)}</small><em>${x.pending} pending of ${x.total} total</em></div></div>`;
-  }).join('');
-}
-
-function openTaskInUpdate(taskId){
-  if(!taskId) return;
-  showView('update');
-  setTimeout(()=>{ const sel=$('updateTaskId'); if(sel){ sel.value=taskId; renderSelectedTaskDetail(); } }, 0);
-}
-function handleDashboardTaskOpen(e){
-  const summary=e.target.closest('.review-summary-card');
-  if(summary){ showView('tasks'); const f=$('filterQuick'); if(f){ f.value=summary.dataset.reviewFilter || 'Open Tasks'; renderTaskTable(); } return; }
-  const row=e.target.closest('.dashboard-open-task');
-  if(!row || e.target.closest('button,a,select,input,textarea')) return;
-  openTaskInUpdate(row.dataset.taskId);
-}
-function handleDashboardTaskKey(e){
-  const row=e.target.closest?.('.dashboard-open-task');
-  if(!row) return;
-  if(e.key==='Enter' || e.key===' '){ e.preventDefault(); openTaskInUpdate(row.dataset.taskId); }
-}
-function taskRow(t){
-  const status = isOverdue(t)?'Overdue':t.status;
-  const edit = canEditTask(t) ? `<button class="pill edit-task dashboard-edit" data-task-id="${escapeHtml(t.taskId)}" type="button">Edit</button>` : '';
-  return `<div class="task-row dashboard-open-task" data-task-id="${escapeHtml(t.taskId)}" tabindex="0" role="button" title="Open Update / Review for ${escapeHtml(t.taskId)}"><div class="circle"></div><div><div class="task-title">${escapeHtml(t.taskDescription)}</div><div class="task-meta">${escapeHtml(personByCode(t.assignedTo)?.name || t.assignedTo)} • Due ${escapeHtml(formatDateReadable(t.dueDate))}</div></div><span class="badge ${cssToken(t.priority)}">${escapeHtml(t.priority)}</span><span class="badge status ${statusClass(status)}">${escapeHtml(status)}</span>${edit}</div>`;
-}
+function taskRow(t){ const rawStatus = isOverdue(t)?'Overdue':t.status; const label = rawStatus === 'Overdue' ? 'Overdue' : statusLabel(rawStatus); const edit = canEditTask(t) ? `<button class="pill edit-task dashboard-edit" data-task-id="${escapeHtml(t.taskId)}">Edit</button>` : ''; return `<div class="task-row"><div class="circle"></div><div><div class="task-title">${escapeHtml(t.taskDescription)}</div><div class="task-meta">${escapeHtml(personByCode(t.assignedTo)?.name || t.assignedTo)} • Due ${escapeHtml(t.dueDate || '-')}</div></div><span class="badge ${cssToken(t.priority)}">${escapeHtml(t.priority)}</span><span class="badge status ${statusClass(rawStatus)}">${escapeHtml(label)}</span>${edit}</div>`; }
 function canEditTask(t){ const user=currentUser(); if(!user || isDeleted(t)) return false; if(user.role==='Owner') return true; if(user.role==='Manager') return visiblePeopleCodes().includes(t.assignedTo); if(user.role==='Staff') return t.assignedTo===user.code && ['Requested','Pending','In Progress','Revision Required'].includes(t.status); return false; }
 function renderTaskTable(){
   const rows = filteredTaskRows();
@@ -462,13 +478,16 @@ function renderTaskTable(){
     const safeTaskId = escapeHtml(t.taskId);
     const status = deleted ? 'Deleted' : isOverdue(t) ? 'Overdue' : t.status;
     const actions = showActions ? `<td>${canEditTask(t)?`<button class="pill edit-task" data-task-id="${safeTaskId}">Edit</button>`:''}${user.role==='Owner'?` ${deleted?`<button class="pill restore-task" data-task-id="${safeTaskId}">Restore</button>`:`<button class="pill danger-task delete-task" data-task-id="${safeTaskId}">Delete</button>`}`:''}</td>` : '';
-    return `<tr class="${deleted?'soft-deleted':''}"><td><b>${safeTaskId}</b></td><td>${escapeHtml(t.taskDescription)}</td><td>${escapeHtml(t.assignedTo)}<br><small>${escapeHtml(personByCode(t.assignedTo)?.name || deletedPersonLabel(t.assignedTo))}</small></td><td><span class="badge ${cssToken(t.priority)}">${escapeHtml(t.priority)}</span></td><td>${escapeHtml(formatDateReadable(t.dueDate))}</td><td><span class="badge status ${statusClass(status)}">${escapeHtml(status)}</span></td><td>${escapeHtml(t.staffRemarks || t.checkRemarks || '-')}</td><td>${link}</td>${actions}</tr>`;
+    return `<tr class="${deleted?'soft-deleted':''}"><td><b>${safeTaskId}</b></td><td>${escapeHtml(t.taskDescription)}</td><td>${escapeHtml(t.assignedTo)}<br><small>${escapeHtml(personByCode(t.assignedTo)?.name || deletedPersonLabel(t.assignedTo))}</small></td><td><span class="badge ${cssToken(t.priority)}">${escapeHtml(t.priority)}</span></td><td>${escapeHtml(t.dueDate || '-')}</td><td><span class="badge status ${statusClass(status)}">${escapeHtml(status === 'Overdue' || status === 'Deleted' ? status : statusLabel(status))}</span></td><td>${escapeHtml(t.staffRemarks || t.checkRemarks || '-')}</td><td>${link}</td>${actions}</tr>`;
   }).join('') : `<tr><td colspan="${showActions ? 9 : 8}">No tasks match selected filters.</td></tr>`;
 }
+function canStaffCancelOwnRequested(user, task){
+  return user?.role === 'Staff' && task?.status === 'Requested' && task.assignedTo === user.code && task.createdBy === user.code;
+}
 function statusOptionsForTask(user, task){
-  if(!user || !task) return [];
+  if(!task) return [];
   if(user.role==='Staff'){
-    if(task.status === 'Requested') return ['Cancelled'];
+    if(canStaffCancelOwnRequested(user, task)) return ['Cancelled'];
     return state.config.staffAllowedStatuses || ['Pending','In Progress','Ready for Check'];
   }
   if(task?.status === 'Requested') return ['Pending','Cancelled'];
@@ -485,17 +504,57 @@ function renderUpdateOptions(){
 function renderSelectedTaskDetail(){
   const id=$('updateTaskId').value; const t=state.tasks.find(x=>x.taskId===id); const user=currentUser();
   const opts = t ? statusOptionsForTask(user, t) : [];
-  $('updateStatus').innerHTML = opts.length ? opts.map(x=>optionHtml(x)).join('') : '<option value="">No valid status</option>';
+  $('updateStatus').innerHTML = opts.length ? opts.map(x=>optionHtml(x, statusLabel(x))).join('') : '<option value="">No valid status</option>';
   if(!t){ $('selectedTaskDetail').innerHTML='<h2>Selected Task</h2><p>No eligible task selected.</p>'; return; }
   const reviewWarning = user.role !== 'Staff' ? '<div class="staff-capacity-note">Refresh before reviewing if this page has been open for a long time.</div>' : '';
-  const canOwnerManagerEdit = ['Owner','Manager'].includes(user.role) && canEditTask(t);
-  const editButton = canOwnerManagerEdit ? `<button class="pill edit-task selected-task-edit-btn" data-task-id="${escapeHtml(t.taskId)}" type="button">Edit Selected Task Details</button>` : '';
-  const rows = [['Task ID',t.taskId],['Description',t.taskDescription],['Assigned To',`${personByCode(t.assignedTo)?.name || ''} (${t.assignedTo})`],['Priority',t.priority],['Due Date',formatDateReadable(t.dueDate)],['Status',t.status],['Staff Remarks',t.staffRemarks || '-'],['Check Remarks',t.checkRemarks || '-'],['Link',t.drawingLink || '-'],['History',t.historyNotes || '-']];
-  $('selectedTaskDetail').innerHTML = `<div class="selected-task-head"><h2>Selected Task</h2>${editButton}</div>${reviewWarning}${rows.map(([k,v])=>`<div class="detail-line"><b>${k}</b><span>${escapeHtml(v)}</span></div>`).join('')}<div class="staff-capacity-note">Owner/Manager can edit task description, assignee, priority, due date and file link from this button. Status and review remarks are updated from the form on the left.</div>`;
+  $('selectedTaskDetail').innerHTML = `<h2>Selected Task</h2>${reviewWarning}${[['Task ID',t.taskId],['Description',t.taskDescription],['Assigned To',`${personByCode(t.assignedTo)?.name || ''} (${t.assignedTo})`],['Priority',t.priority],['Due Date',t.dueDate],['Status',statusLabel(t.status)],['Staff Remarks',t.staffRemarks || '-'],['Check Remarks',t.checkRemarks || '-'],['Link',t.drawingLink || '-'],['History',t.historyNotes || '-']].map(([k,v])=>`<div class="detail-line"><b>${k}</b><span>${escapeHtml(v)}</span></div>`).join('')}`;
 }
 function renderTeam(){
   const codes=visiblePeopleCodes(); const rows=people().filter(s=>codes.includes(s.code));
-  $('teamTableBody').innerHTML=rows.map(s=>`<tr><td><b>${escapeHtml(s.code)}</b></td><td>${escapeHtml(s.name)}</td><td>${escapeHtml(s.role)}</td><td>${escapeHtml(s.managerCode || '-')}</td><td>${escapeHtml(s.email || '-')}</td><td>${escapeHtml(s.active || 'Yes')}</td><td>${state.tasks.filter(t=>t.assignedTo===s.code && isOpen(t)).length}</td></tr>`).join('') + `<tr><td colspan="7"><div class="staff-capacity-note">Active limits: ${activePeople().length}/${maxPeople()} people total, ${activeByRole('Owner').length}/${maxOwners()} owners. Managers and staff share the 30-person cap. Inactive people remain in task history.</div></td></tr>`;
+  $('teamTableBody').innerHTML=rows.map(s=>`<tr><td><b>${escapeHtml(s.code)}</b></td><td>${escapeHtml(s.name)}</td><td>${escapeHtml(s.role)}</td><td>${escapeHtml(s.managerCode || '-')}</td><td>${escapeHtml(s.email || '-')}</td><td>${escapeHtml(s.active || 'Yes')}</td><td>${state.tasks.filter(t=>t.assignedTo===s.code && isOpen(t)).length}</td></tr>`).join('') || '<tr><td colspan="7">No team records visible.</td></tr>';
+  renderTeamWorkload();
+}
+function renderTeamWorkload(){
+  const body=$('teamWorkloadBody'); if(!body) return;
+  const codes=visiblePeopleCodes();
+  const rows=people().filter(s=>codes.includes(s.code) && s.role !== 'Owner');
+  body.innerHTML = rows.length ? rows.map(p=>{
+    const taskRows = state.tasks.filter(t=>t.assignedTo===p.code && !isDeleted(t));
+    return `<tr><td><b>${escapeHtml(p.name || p.code)}</b><br><small>${escapeHtml(p.code)}</small></td><td>${escapeHtml(p.role)}</td><td>${taskRows.filter(isOpen).length}</td><td>${taskRows.filter(isOverdue).length}</td><td>${taskRows.filter(t=>t.status==='Ready for Check').length}</td><td>${taskRows.filter(t=>t.status==='Revision Required').length}</td><td>${escapeHtml(lastUpdatedForPerson(p.code))}</td></tr>`;
+  }).join('') : '<tr><td colspan="7">No workload records visible.</td></tr>';
+}
+function showTeamTab(tab='directory'){
+  document.querySelectorAll('[data-team-tab]').forEach(btn=>btn.classList.toggle('active', btn.dataset.teamTab===tab));
+  $('teamDirectoryPane')?.classList.toggle('hidden', tab!=='directory');
+  $('teamWorkloadPane')?.classList.toggle('hidden', tab!=='workload');
+  if(tab==='workload') renderTeamWorkload();
+}
+function showAdminTab(tab='people'){
+  if(tab==='audit'){ showView('audit'); return; }
+  if(currentView !== 'people') showView('people');
+  document.querySelectorAll('[data-admin-tab]').forEach(btn=>btn.classList.toggle('active', btn.dataset.adminTab===tab));
+  const showConsole = tab==='console';
+  const showSecurity = tab==='security';
+  const showPeople = tab==='people' || showConsole;
+  $('personForm')?.classList.toggle('admin-console-only', showConsole);
+  $('personForm')?.classList.toggle('hidden', !showPeople);
+  document.querySelector('.people-card')?.classList.toggle('hidden', !showPeople || showConsole);
+  $('loginSecurityPanel')?.classList.toggle('hidden', !showSecurity);
+  renderLoginSecurity();
+}
+function renderLoginSecurity(){
+  const list=$('loginSecurityList'); if(!list) return;
+  const user=currentUser();
+  if(user?.role !== 'Owner'){
+    list.innerHTML = emptyState('Login security is owner-only.');
+    return;
+  }
+  const events=(state.auditLogs || []).map(normalizeAudit).filter(a=>['LOGIN_SUCCESS','LOGIN_FAILED','LOCKOUT','PIN_CHANGED','PIN_HASH_UPGRADED'].includes(a.action)).slice(0,30);
+  if(!events.length){
+    list.innerHTML = emptyState('Login audit records will appear after live login activity.');
+    return;
+  }
+  list.innerHTML = events.map(a=>`<div class="security-row"><div><b>${escapeHtml(personByCode(a.by)?.name || a.by)}</b><span>${escapeHtml(a.action.replaceAll('_',' '))}</span></div><small>${escapeHtml(a.time || '')}</small></div>`).join('');
 }
 
 function canEditPerson(target){ const user = currentUser(); if(!user || !target) return false; if(user.role === 'Owner') return true; if(user.role === 'Manager') return target.role === 'Staff' && target.managerCode === user.code; return false; }
@@ -515,11 +574,11 @@ function renderPersonFormRules(){
   if(user.role==='Manager'){ $('personRole').value='Staff'; $('personRole').disabled=true; $('personManager').value=user.code; $('personManager').disabled=true; }
   else { $('personRole').disabled=false; $('personManager').disabled = role !== 'Staff'; }
   $('personCode').readOnly = true;
-  if(!$('personEditingCode').value) $('personCode').value = nextPersonCode(role);
+  if(!$('personEditingCode').value) $('personCode').value = API_URL ? 'Assigned automatically' : nextPersonCode(role);
 }
 
 function nextPersonCode(role=$('personRole')?.value || 'Staff'){ const prefix = role === 'Owner' ? 'O' : role === 'Manager' ? 'M' : 'S'; const nums = people().filter(p=>String(p.code).startsWith(prefix)).map(p=>Number(String(p.code).replace(prefix,''))).filter(Boolean); return `${prefix}${String(Math.max(0,...nums)+1).padStart(3,'0')}`; }
-function clearPersonForm(){ ['personEditingCode','personName','personEmail','personPin'].forEach(id=>$(id).value=''); $('personActive').value='Yes'; $('personRole').value='Staff'; $('personCode').value=nextPersonCode('Staff'); renderPersonFormRules(); }
+function clearPersonForm(){ ['personEditingCode','personName','personEmail','personPin'].forEach(id=>$(id).value=''); $('personActive').value='Yes'; $('personRole').value='Staff'; $('personCode').value=API_URL ? 'Assigned automatically' : nextPersonCode('Staff'); renderPersonFormRules(); }
 async function handlePeopleActions(e){
   const edit = e.target.closest('.edit-person');
   const danger=e.target.closest('.danger-person');
@@ -565,14 +624,89 @@ async function restoreTask(taskId){
     saveState(); renderAll(); toast(`Task ${taskId} restored`);
   }catch(err){ showError(err); }
 }
+
+function closeTaskSidePanel(){
+  $('taskSidePanel')?.classList.add('hidden');
+  $('tasksWorkspace')?.classList.remove('side-open');
+}
 function openTaskEdit(taskId){
   const t=state.tasks.find(x=>x.taskId===taskId); if(!t || !canEditTask(t)){ toast('You cannot edit this task.'); return; }
+  showView('tasks');
+  const panel=$('taskSidePanel');
+  if(!panel){ openTaskEditModalFallback(t); return; }
+  $('sideTaskId').value=t.taskId;
+  $('sideTaskIdView').value=t.taskId;
+  $('sideDescription').value=t.taskDescription || '';
+  $('sideDueDate').value=t.dueDate || '';
+  $('sideLink').value=t.drawingLink || '';
+  $('sideRemarks').value='';
+  fillSelect('sidePriority', state.config.priorities, t.priority);
+  const user=currentUser(); let allowed=[];
+  if(user.role==='Owner') allowed=activePeople();
+  else if(user.role==='Manager') allowed=activePeople().filter(p=>p.code===user.code || p.managerCode===user.code);
+  else allowed=[user];
+  $('sideAssignee').innerHTML=allowed.map(p=>optionHtml(p.code, `${p.name} (${p.role})`)).join('');
+  $('sideAssignee').value=t.assignedTo;
+  const statusOptions = statusOptionsForTask(user, t);
+  $('sideStatus').innerHTML = statusOptions.length ? ['<option value="">Keep current</option>', ...statusOptions.map(x=>optionHtml(x, statusLabel(x)))].join('') : '<option value="">No status action</option>';
+  $('sideStatusLine').innerHTML = `<span class="badge status ${statusClass(t.status)}">${escapeHtml(statusLabel(t.status))}</span>`;
+  $('sideTaskMeta').innerHTML = [['Assigned', personByCode(t.assignedTo)?.name || t.assignedTo], ['Priority', t.priority], ['Due', t.dueDate || '-'], ['Last Updated', t.lastUpdated || '-']].map(([k,v])=>`<div class="detail-line"><b>${k}</b><span>${escapeHtml(v)}</span></div>`).join('');
+  $('sideMarkCompleted').style.display = (user.role !== 'Staff' && t.status==='Ready for Check') ? '' : 'none';
+  $('sideNeedsCorrection').style.display = (user.role !== 'Staff' && t.status==='Ready for Check') ? '' : 'none';
+  panel.classList.remove('hidden');
+  $('tasksWorkspace')?.classList.add('side-open');
+}
+function openTaskEditModalFallback(t){
   $('editTaskId').value=t.taskId; $('editDescription').value=t.taskDescription || ''; $('editDueDate').value=t.dueDate || ''; $('editLink').value=t.drawingLink || ''; $('editNote').value='';
   fillSelect('editPriority', state.config.priorities, t.priority);
   const user=currentUser(); let allowed=[]; if(user.role==='Owner') allowed=activePeople(); else if(user.role==='Manager') allowed=activePeople().filter(p=>p.code===user.code || p.managerCode===user.code); else allowed=[user];
   $('editAssignee').innerHTML=allowed.map(p=>optionHtml(p.code, `${p.name} (${p.role})`)).join(''); $('editAssignee').value=t.assignedTo;
   $('taskEditModal').classList.remove('hidden');
 }
+async function quickSideStatus(status){
+  if(!$('sideStatus')) return;
+  $('sideStatus').value=status;
+  $('taskSideForm')?.requestSubmit();
+}
+async function submitTaskSideForm(e){
+  e.preventDefault(); if(formBusy(e, true, 'Saving task...')) return;
+  const user=currentUser(); const id=$('sideTaskId').value; const t=state.tasks.find(x=>x.taskId===id);
+  if(!t || !canEditTask(t)){ formBusy(e, false); toast('Task action not allowed'); return; }
+  const remarks=clean($('sideRemarks').value);
+  const newStatus=$('sideStatus').value;
+  try{
+    const changed = clean($('sideDescription').value)!==clean(t.taskDescription) || $('sideAssignee').value!==t.assignedTo || $('sidePriority').value!==t.priority || $('sideDueDate').value!==t.dueDate || clean($('sideLink').value)!==clean(t.drawingLink);
+    if(changed){
+      if(API_URL){ const payload = await apiPost({ action:'editTask', taskId:id, taskDescription:clean($('sideDescription').value), assignedTo:$('sideAssignee').value, priority:$('sidePriority').value, dueDate:$('sideDueDate').value, drawingLink:clean($('sideLink').value), note:remarks }); master = payload.data || await fetchBootstrap(); state = JSON.parse(JSON.stringify(master)); }
+      else { t.taskDescription=clean($('sideDescription').value); t.assignedTo=$('sideAssignee').value; t.priority=$('sidePriority').value; t.dueDate=$('sideDueDate').value; t.drawingLink=clean($('sideLink').value); t.lastUpdated=todayISO(); addTimeline(t,'Edited', remarks); addAudit('TASK_EDITED', id, 'Edited from side panel'); saveState(); }
+    }
+    if(newStatus){
+      const current = state.tasks.find(x=>x.taskId===id) || t;
+      if(API_URL){ const payload = await apiPost({ action:'updateTask', taskId:id, newStatus, remarks }); master = payload.data || await fetchBootstrap(); state = JSON.parse(JSON.stringify(master)); }
+      else { applyLocalTaskStatus(user, current, newStatus, remarks); saveState(); }
+    }
+    renderAll(); closeTaskSidePanel(); toast('Task saved');
+  }catch(err){ showError(err); } finally { formBusy(e, false); }
+}
+function applyLocalTaskStatus(user, t, newStatus, remarks){
+  if(user.role==='Staff'){
+    if(t.assignedTo!==user.code) throw new Error('Staff can update only own task');
+    if(canStaffCancelOwnRequested(user, t) && newStatus==='Cancelled'){
+      t.staffRemarks=remarks; addTimeline(t,newStatus,remarks); addAudit('TASK_CANCELLED_BY_STAFF', t.taskId, `${newStatus} by staff`);
+    } else {
+      if(t.status==='Requested') throw new Error('Requested task must be approved first.');
+      if(!state.config.staffAllowedStatuses.includes(newStatus)) throw new Error('Staff cannot use this status');
+      t.staffRemarks=remarks; addTimeline(t,newStatus,remarks); addAudit('TASK_UPDATED', t.taskId, `${newStatus} by staff`);
+    }
+  } else {
+    if(user.role==='Manager' && !visiblePeopleCodes().includes(t.assignedTo)) throw new Error('Manager cannot review outside team');
+    if(t.status==='Requested' && !['Pending','Cancelled'].includes(newStatus)) throw new Error('Requested tasks can only be approved to Pending or Cancelled.');
+    if(t.status!=='Requested' && (t.status!=='Ready for Check' || !['Completed','Revision Required'].includes(newStatus))) throw new Error('Invalid review action');
+    t.checkRemarks=remarks; t.checkedBy=user.code; if(newStatus==='Completed') t.completedDate=todayISO(); addTimeline(t,newStatus,remarks); addAudit(t.status==='Requested'?'TASK_REQUEST_REVIEWED':'TASK_REVIEWED', t.taskId, `${newStatus} by ${user.role}`);
+  }
+  t.status=newStatus; t.lastUpdated=todayISO(); t.updateCount=(Number(t.updateCount)||0)+1; t.historyNotes = `${t.historyNotes || ''}\n${todayISO()} ${newStatus} by ${user.code}: ${remarks}`;
+}
+
 async function submitTaskEdit(e){
   e.preventDefault(); if(formBusy(e, true, 'Saving edit...')) return; const user=currentUser(); const id=$('editTaskId').value; const t=state.tasks.find(x=>x.taskId===id); if(!t || !canEditTask(t)){ formBusy(e, false); toast('Edit not allowed'); return; }
   try{
@@ -623,18 +757,6 @@ async function submitPerson(e){
   }catch(err){ showError(err); } finally { formBusy(e, false); }
 }
 
-
-function renderLoginSecurity(){
-  const box=$('loginSecurityList'); if(!box) return;
-  const user=currentUser();
-  if(!['Owner','Manager'].includes(user?.role)){ box.innerHTML='<p>Login security is visible to Owner/Manager only.</p>'; return; }
-  const sessions = state.loginSessions || [];
-  if(!sessions.length){ box.innerHTML='<p>Login session tracking will appear here after live Apps Script is updated and users login again.</p>'; return; }
-  const codes=visiblePeopleCodes();
-  const rows=sessions.filter(x=>codes.includes(x.code)).slice(0,12);
-  box.innerHTML = rows.length ? rows.map(x=>`<div class="login-session-row"><b>${escapeHtml(personByCode(x.code)?.name || x.code)}</b><span>${escapeHtml(x.loginTime || '-')} · ${escapeHtml(x.duration || '-')}</span><small>IP: ${escapeHtml(x.ip || 'Unavailable')} · ${escapeHtml(x.ipChanged || 'Same/unknown')} · ${escapeHtml(x.device || '-')}</small></div>`).join('') : '<p>No visible login sessions yet.</p>';
-}
-
 function normalizeAudit(a){ return { category:a.category || auditCategory(a.action || ''), role:a.role || personByCode(a.by)?.role || '', oldValue:a.oldValue || '', newValue:a.newValue || '', reason:a.reason || a.detail || '', ...a }; }
 function refreshAuditFilterOptions(rows){
   const current = id => $(id)?.value || 'All';
@@ -669,7 +791,11 @@ function renderAudit(){
   const rows=filteredAuditRows().slice(0,150);
   body.innerHTML = rows.length ? rows.map(a=>`<tr><td>${escapeHtml(a.time)}</td><td><b>${escapeHtml(personByCode(a.by)?.name || a.by)}</b><div class="audit-note">${escapeHtml(a.role || personByCode(a.by)?.role || '')}</div></td><td><span class="badge">${escapeHtml(a.category)}</span></td><td><b>${escapeHtml(a.action)}</b></td><td>${escapeHtml(a.target)}</td><td><div class="audit-change"><span>${escapeHtml(a.oldValue)}</span><b>→</b><span>${escapeHtml(a.newValue)}</span></div></td><td>${escapeHtml(a.reason || a.detail)}</td></tr>`).join('') : '<tr><td colspan="7">No audit activity found for the selected filters.</td></tr>';
 }
-function csvEscape(v){ return '"'+clean(v).replaceAll('"','""')+'"'; }
+function csvEscape(v){
+  let value = clean(v);
+  if(/^[=+\-@]/.test(value)) value = "'" + value;
+  return '"'+value.replaceAll('"','""')+'"';
+}
 function downloadFile(name, text){ const blob=new Blob([text],{type:'text/csv'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=name; a.click(); URL.revokeObjectURL(url); }
 function dateStamp(){ return new Date().toISOString().slice(0,10); }
 function taskCsv(rows=state.tasks||[]){ const headers=['Task ID','Description','Assigned To','Assigned Name','Priority','Due Date','Status','Deleted','Archived','Staff Remarks','Check Remarks','Link','Created By','Checked By','Last Updated']; return [headers.join(','),...rows.map(t=>[t.taskId,t.taskDescription,t.assignedTo,personByCode(t.assignedTo)?.name||'',t.priority,t.dueDate,t.status,t.deleted,t.archived,t.staffRemarks,t.checkRemarks,t.drawingLink,t.createdBy,t.checkedBy,t.lastUpdated].map(csvEscape).join(','))].join('\n'); }
@@ -716,13 +842,7 @@ async function submitUpdate(e){
   e.preventDefault(); if(formBusy(e, true, 'Submitting update...')) return; const user=currentUser(); const id=$('updateTaskId').value; const t=state.tasks.find(x=>x.taskId===id); if(!t){ formBusy(e, false); toast('No eligible task selected'); return; }
   const newStatus=$('updateStatus').value; const remarks=clean($('updateRemarks').value);
   try { if(API_URL){ const payload = await apiPost({ action:'updateTask', userCode:user.code, userRole:user.role, taskId:id, newStatus, remarks }); master = payload.data || await fetchBootstrap(); state = JSON.parse(JSON.stringify(master)); $('updateRemarks').value=''; renderAll(); toast('Task updated'); return; }
-    if(user.role==='Staff'){
-      if(t.assignedTo!==user.code){ toast('Staff can update only own task'); return; }
-      if(['Completed','Cancelled'].includes(t.status)){ toast('Closed task cannot be updated by staff'); return; }
-      if(t.status==='Requested' && newStatus!=='Cancelled'){ toast('Requested self-task can only be cancelled by staff or approved by Owner/Manager.'); return; }
-      if(t.status!=='Requested' && !(state.config.staffAllowedStatuses||[]).includes(newStatus)){ toast('Staff cannot mark Completed'); return; }
-      t.staffRemarks=remarks; addTimeline(t,newStatus,remarks); addAudit('TASK_UPDATED', id, `${newStatus} by staff`);
-    }
+    if(user.role==='Staff'){ if(t.assignedTo!==user.code){ toast('Staff can update only own task'); return; } if(canStaffCancelOwnRequested(user, t) && newStatus === 'Cancelled'){ t.staffRemarks=remarks; addTimeline(t,newStatus,remarks); addAudit('TASK_CANCELLED_BY_STAFF', id, `${newStatus} by staff`); } else { if(t.status==='Requested'){ toast('Requested task must be approved first. Staff can only cancel own requested task.'); return; } if(!state.config.staffAllowedStatuses.includes(newStatus)){ toast('Staff cannot use this status'); return; } if(['Completed','Cancelled'].includes(t.status)){ toast('Closed task cannot be updated by staff'); return; } t.staffRemarks=remarks; addTimeline(t,newStatus,remarks); addAudit('TASK_UPDATED', id, `${newStatus} by staff`); } }
     else { if(user.role==='Manager' && !visiblePeopleCodes().includes(t.assignedTo)){ toast('Manager cannot review outside team'); return; } if(t.status==='Requested'){ if(!['Pending','Cancelled'].includes(newStatus)){ toast('Requested tasks can only be approved to Pending or Cancelled.'); return; } }
       else { if(t.status!=='Ready for Check'){ toast('Review allowed only when task is Ready for Check'); return; } if(!['Completed','Revision Required'].includes(newStatus)){ toast('Invalid review action'); return; } }
       t.checkRemarks=remarks; t.checkedBy=user.code; if(newStatus==='Completed') t.completedDate=todayISO(); addTimeline(t,newStatus,remarks); addAudit(t.status==='Requested'?'TASK_REQUEST_REVIEWED':'TASK_REVIEWED', id, `${newStatus} by ${user.role}`); }

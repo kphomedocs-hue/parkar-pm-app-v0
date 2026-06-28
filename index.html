@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Parkar & Associates — Staff Task System v2.6.1</title>
-  <link rel="icon" type="image/png" href="assets/parkar-icon.png" />
+  <link rel="icon" type="image/png" href="assets/favicon-32.png" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -29,16 +29,13 @@
     <aside class="sidebar">
       <div class="brand sidebar-brand"><img class="brand-logo" src="assets/parkar-logo.png" alt="Parkar & Associates logo" /><div><strong>Staff Management</strong><span>Task Control System</span></div></div>
       <div class="login-user-badge sidebar-user" id="loginUserBadge"></div>
-      <div class="sidebar-user-actions"><button id="logoutBtn" class="ghost-btn compact-logout">Logout</button></div>
       <nav>
         <button class="nav-item active" data-view="dashboard"><span>▦</span> Dashboard</button>
         <button class="nav-item" data-view="tasks"><span>☑</span> Tasks</button>
-        <button class="nav-item" data-view="add"><span>＋</span> Add Task</button>
-        <button class="nav-item" data-view="update"><span>↻</span> Update / Review</button>
         <button class="nav-item" data-view="team"><span>◉</span> Team</button>
-        <button class="nav-item" data-view="people"><span>⚙</span> Admin / People</button>
-        <button class="nav-item" data-view="audit"><span>◎</span> Audit / Backup</button>
+        <button class="nav-item" data-view="people"><span>⚙</span> Admin</button>
       </nav>
+      <div class="sidebar-user-actions sidebar-logout-bottom"><button id="logoutBtn" class="ghost-btn compact-logout">Logout</button></div>
     </aside>
 
     <main class="main">
@@ -56,51 +53,74 @@
       <div class="api-mode-banner" id="apiModeBanner">Checking connection...</div>
 
       <section class="view active" id="dashboardView">
-        <div class="hero-grid">
-          <div class="kpi-card dark role-owner-only" id="kpiTotalCard"><div class="kpi-icon">✓</div><p>Total Tasks</p><strong id="kpiTotal">0</strong><span id="kpiScope">Current view</span></div>
-          <div class="kpi-card"><div class="kpi-icon">⏱</div><p>Open Tasks</p><strong id="kpiOpen">0</strong><span>Pending + active work</span></div>
-          <div class="kpi-card"><div class="kpi-icon">⚠</div><p>Overdue</p><strong id="kpiOverdue">0</strong><span>Needs attention</span></div>
-          <div class="kpi-card" id="kpiApprovalCard"><div class="kpi-icon">📤</div><p>Sent for Approval</p><strong id="kpiApproval">0</strong><span>Ready for check</span></div>
-          <div class="kpi-card role-owner-only" id="kpiCompletedCard"><div class="kpi-icon">🏁</div><p>Completed</p><strong id="kpiCompleted">0</strong><span>Closed tasks</span></div>
+        <div class="hero-grid dashboard-main-cards">
+          <div class="kpi-card dark"><div class="kpi-icon">⏱</div><p id="kpiOpenLabel">Open Tasks</p><strong id="kpiOpen">0</strong><span id="kpiOpenHelp">Current workload</span></div>
+          <div class="kpi-card"><div class="kpi-icon">⚠</div><p id="kpiOverdueLabel">Overdue</p><strong id="kpiOverdue">0</strong><span>Delayed work</span></div>
+          <div class="kpi-card" id="kpiApprovalCard"><div class="kpi-icon">📤</div><p id="kpiApprovalLabel">Waiting Review</p><strong id="kpiApproval">0</strong><span id="kpiApprovalHelp">Action pending</span></div>
+          <div class="kpi-card" id="kpiCompletedCard"><div class="kpi-icon">🏁</div><p>Completed This Month</p><strong id="kpiCompleted">0</strong><span>Monthly output</span></div>
         </div>
 
-        <div class="dashboard-grid">
-          <article class="panel wide role-owner-only" id="currentStatusPanel">
-            <div class="panel-head"><div><h2>Current Task Status</h2><p>Status distribution from current task data</p></div><button class="pill" id="openTasksBtn">All Tasks ›</button></div>
-            <div class="status-bars" id="statusBars"></div>
-            <div class="legend" id="statusLegend"></div>
+        <div class="dashboard-grid compact-dashboard-grid final-dashboard-grid">
+          <article class="panel wide" id="attentionPanel">
+            <div class="panel-head"><h2 id="attentionTitle">Needs Attention</h2><button class="pill" data-view-target="tasks">Open Tasks ›</button></div>
+            <div class="dashboard-action-list" id="attentionList"></div>
           </article>
-          <article class="panel wide role-owner-manager-only" id="reviewSummaryPanel">
-            <div class="panel-head"><div><h2>Review Summary</h2><p>Owner/Manager review actions and follow-up items</p></div><button class="pill" data-view-target="update">Open Review ›</button></div>
-            <div class="review-summary-grid" id="reviewSummaryGrid"></div>
-            <div class="task-list review-waiting-list" id="reviewWaitingList"></div>
+          <article class="panel wide" id="managerSummaryPanel">
+            <div class="panel-head"><h2 id="managerSummaryTitle">Manager / Staff Summary</h2><button class="pill" data-view-target="team">Team ›</button></div>
+            <div class="summary-table-wrap"><table class="summary-table"><thead id="managerSummaryHead"></thead><tbody id="managerSummaryBody"></tbody></table></div>
           </article>
-          <article class="panel wide">
-            <div class="panel-head"><div><h2>All Task</h2><p>Fast preview of active work</p></div><button class="pill" data-view-target="tasks">All To-do ›</button></div>
-            <div class="task-list" id="dashboardTaskList"></div>
-          </article>
-          <article class="panel wide" id="approvalListPanel">
-            <div class="panel-head"><div><h2>Sent for Approval</h2><p>Tasks waiting for review / checking</p></div><button class="pill" data-view-target="update">Open Review ›</button></div>
-            <div class="task-list approval-task-list" id="approvalTaskList"></div>
-          </article>
-          <article class="panel team-pie-panel role-owner-manager-only">
-            <div class="panel-head"><div><h2>Latest Team Task Load</h2><p>Pending vs total tasks for the latest 4 people who updated work</p></div></div>
-            <div class="team-pie-list" id="teamPieList"></div>
+          <article class="panel wide" id="latestActivityPanel">
+            <div class="panel-head"><h2>Latest Activity</h2><button class="pill" id="latestActivityBtn" data-view-target="audit">Audit ›</button></div>
+            <div class="dashboard-action-list" id="latestActivityList"></div>
           </article>
         </div>
       </section>
 
       <section class="view" id="tasksView">
-        <div class="toolbar panel">
-          <select id="filterQuick"></select>
-          <select id="filterPriority"></select>
-          <select id="filterStaff"></select>
-          <select id="sortBy"></select>
+        <div class="section-tabs panel compact-tabs"><button class="section-tab active" data-view-target="tasks">All Tasks</button><button class="section-tab" data-view-target="add">Add Task</button><button class="section-tab" data-view-target="update">Update / Review</button></div>
+        <div class="tasks-workspace" id="tasksWorkspace">
+          <div class="tasks-list-area">
+            <div class="toolbar panel task-filter-bar">
+              <label class="compact-filter-label"><span>View</span><select id="filterQuick"></select></label>
+              <label class="compact-filter-label"><span>Priority</span><select id="filterPriority"></select></label>
+              <label class="compact-filter-label"><span>Staff</span><select id="filterStaff"></select></label>
+              <select id="sortBy" aria-label="Sort tasks"></select>
+            </div>
+            <div class="table-card panel"><table><thead><tr><th>Task ID</th><th>Description</th><th>Assigned</th><th>Priority</th><th>Due</th><th>Status</th><th>Remarks</th><th>Link</th><th id="taskActionHead">Action</th></tr></thead><tbody id="taskTableBody"></tbody></table></div>
+          </div>
+          <aside class="task-side-panel panel hidden" id="taskSidePanel">
+            <div class="panel-head side-panel-head">
+              <div><h2 id="taskSideTitle">Task Details</h2><p id="taskSideSubtitle">Review, edit, or update the selected task.</p></div>
+              <button class="ghost-btn close-side-panel" id="closeTaskSidePanel" type="button">× Close</button>
+            </div>
+            <form id="taskSideForm" class="form-card compact-task-form">
+              <input type="hidden" id="sideTaskId" />
+              <div class="side-status-line" id="sideStatusLine"></div>
+              <label>Task ID<input id="sideTaskIdView" readonly /></label>
+              <label>Task Description<textarea id="sideDescription" required></textarea></label>
+              <div class="side-form-grid">
+                <label>Assign To<select id="sideAssignee"></select></label>
+                <label>Priority<select id="sidePriority"></select></label>
+              </div>
+              <div class="side-form-grid">
+                <label>Due Date<input id="sideDueDate" type="date" /></label>
+                <label>File / Drawing Link<input id="sideLink" placeholder="Google Drive / drawing link" /></label>
+              </div>
+              <label>New Status<select id="sideStatus"></select></label>
+              <label>Remarks<textarea id="sideRemarks" placeholder="Add progress / review remarks..."></textarea></label>
+              <div class="side-task-meta" id="sideTaskMeta"></div>
+              <div class="side-actions">
+                <button class="primary-btn" type="submit">Save Update</button>
+                <button class="ghost-btn" type="button" id="sideNeedsCorrection">Needs Correction</button>
+                <button class="ghost-btn" type="button" id="sideMarkCompleted">Mark Completed</button>
+              </div>
+            </form>
+          </aside>
         </div>
-        <div class="table-card panel"><table><thead><tr><th>Task ID</th><th>Description</th><th>Assigned</th><th>Priority</th><th>Due</th><th>Status</th><th>Remarks</th><th>Link</th><th id="taskActionHead">Action</th></tr></thead><tbody id="taskTableBody"></tbody></table></div>
       </section>
 
       <section class="view" id="addView">
+        <div class="section-tabs panel compact-tabs"><button class="section-tab" data-view-target="tasks">All Tasks</button><button class="section-tab active" data-view-target="add">Add Task</button><button class="section-tab" data-view-target="update">Update / Review</button></div>
         <div class="form-grid">
           <form id="addTaskForm" class="panel form-card">
             <h2>Add New Task</h2><p id="addHelp">Owner can assign to anyone. Manager can assign to team. Staff can add self-task only.</p>
@@ -112,11 +132,12 @@
             <label>File / Drawing Link<input id="addLink" placeholder="Google Drive / drawing / reference link" /></label>
             <button class="primary-btn" type="submit">Submit New Task</button>
           </form>
-          <article class="panel rules-card"><h2>Workflow Rules</h2><ol><li>New assigned tasks start as <b>Pending</b>; staff self-tasks start as <b>Requested</b> until approved.</li><li>Staff can update a task and use <b>Ready for Check</b> to send finished work for review.</li><li>The same Task ID can become <b>Completed</b> or <b>Revision Required</b>. No new Task ID is created for correction.</li><li>Manager can act only on own-team tasks.</li></ol></article>
+          <article class="panel rules-card"><h2>Workflow Rules</h2><ol><li>New assigned tasks start as <b>Pending</b>; staff self-tasks start as <b>Waiting Approval</b> until approved.</li><li>Staff can update a task and use <b>Sent for Review</b> to send finished work for review.</li><li>The same Task ID can become <b>Completed</b> or <b>Needs Correction</b>. No new Task ID is created for correction.</li><li>Manager can act only on own-team tasks.</li></ol></article>
         </div>
       </section>
 
       <section class="view" id="updateView">
+        <div class="section-tabs panel compact-tabs"><button class="section-tab" data-view-target="tasks">All Tasks</button><button class="section-tab" data-view-target="add">Add Task</button><button class="section-tab active" data-view-target="update">Update / Review</button></div>
         <div class="form-grid">
           <form id="updateForm" class="panel form-card">
             <h2 id="updateTitle">Update Task</h2>
@@ -130,9 +151,14 @@
         </div>
       </section>
 
-      <section class="view" id="teamView"><div class="panel table-card"><div class="panel-head"><h2>Team Master</h2></div><table><thead><tr><th>ID</th><th>Name</th><th>Role</th><th>Manager</th><th>Email</th><th>Active</th><th>Open Tasks</th></tr></thead><tbody id="teamTableBody"></tbody></table></div></section>
+      <section class="view" id="teamView">
+        <div class="section-tabs panel compact-tabs"><button class="section-tab active" data-team-tab="directory">Team Directory</button><button class="section-tab" data-team-tab="workload">Workload</button></div>
+        <div class="team-tab-pane" id="teamDirectoryPane"><div class="panel table-card"><div class="panel-head"><h2>Team Directory</h2></div><table><thead><tr><th>ID</th><th>Name</th><th>Role</th><th>Manager</th><th>Email</th><th>Active</th><th>Open Tasks</th></tr></thead><tbody id="teamTableBody"></tbody></table></div></div>
+        <div class="team-tab-pane hidden" id="teamWorkloadPane"><div class="panel table-card"><div class="panel-head"><div><h2>Workload</h2><p>Open, overdue, review and correction load by person.</p></div></div><table><thead><tr><th>Person</th><th>Role</th><th>Open</th><th>Overdue</th><th>Sent for Review</th><th>Needs Correction</th><th>Last Updated</th></tr></thead><tbody id="teamWorkloadBody"></tbody></table></div></div>
+      </section>
 
       <section class="view" id="peopleView">
+        <div class="section-tabs panel compact-tabs admin-tabs"><button class="section-tab active" data-admin-tab="people" data-view-target="people">People</button><button class="section-tab owner-only-tab" data-admin-tab="console">Console</button><button class="section-tab owner-only-tab" data-admin-tab="audit" data-view-target="audit">Audit & Backup</button><button class="section-tab owner-only-tab" data-admin-tab="security">Login Security</button></div>
         <div class="form-grid people-layout">
           <form class="panel form-card" id="personForm">
             <h2>People Management</h2>
@@ -147,7 +173,7 @@
               <div class="refresh-status admin-refresh-status" id="refreshStatus">Manual refresh only</div>
             </div>
             <input type="hidden" id="personEditingCode" />
-            <label>Person ID<input id="personCode" placeholder="Auto ID" readonly /></label>
+            <label>Person ID<input id="personCode" placeholder="Assigned automatically" readonly /></label>
             <label>Name<input id="personName" placeholder="Full name" required /></label>
             <label>Role<select id="personRole"></select></label>
             <label>Email<input id="personEmail" type="email" placeholder="email@domain.com" /></label>
@@ -155,20 +181,21 @@
             <label>Reporting Manager<select id="personManager"></select></label>
             <label>Active Status<select id="personActive"><option>Yes</option><option>No</option></select></label>
             <button class="primary-btn" type="submit">Save Person</button>
-            <button class="ghost-btn" type="button" onclick="document.getElementById('personForm').reset();document.getElementById('personEditingCode').value='';">Clear</button>
+            <button class="ghost-btn" id="clearPersonFormBtn" type="button">Clear</button>
           </form>
           <div class="panel table-card people-card">
             <div class="panel-head"><div><h2>Owner / Manager / Staff</h2><p>IDs remain fixed. Names, emails, PINs, role, active status and safe deletion can be managed.</p></div></div>
             <div class="people-list" id="peopleList"></div>
           </div>
           <div class="panel table-card login-security-card" id="loginSecurityPanel">
-            <div class="panel-head"><div><h2>Login Security</h2><p>Last 3 login sessions per visible user, IP/location changes, and session duration.</p></div></div>
+            <div class="panel-head"><div><h2>Login Security</h2><p>Login audit history and account security events.</p></div></div>
             <div class="login-security-list" id="loginSecurityList"></div>
           </div>
         </div>
       </section>
 
       <section class="view" id="auditView">
+        <div class="section-tabs panel compact-tabs admin-tabs"><button class="section-tab" data-admin-tab="people" data-view-target="people">People</button><button class="section-tab owner-only-tab" data-admin-tab="console" data-view-target="people">Console</button><button class="section-tab active owner-only-tab" data-admin-tab="audit" data-view-target="audit">Audit & Backup</button><button class="section-tab owner-only-tab" data-admin-tab="security" data-view-target="people">Login Security</button></div>
         <div class="audit-hero panel">
           <div>
             <p class="eyebrow">Owner Control</p>

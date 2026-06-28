@@ -1,7 +1,7 @@
 const DATA_URL = 'data.json';
 // GitHub Pages frontend connects to Google Apps Script through this URL.
 // After deploying Apps Script as Web App, paste the Web App URL here. Keep blank only for local UI preview.
-const API_URL = 'https://script.google.com/macros/s/AKfycbzIOC31eWS8NNq0jFUnfMyV0JaF2CxE0lcgJlo60UZv-gmbioNzvPnGA5DNFwdRQdBZ/exec'; // visual QA demo mode
+const API_URL = 'https://script.google.com/macros/s/AKfycbw053iaPX4-N72d2HGhx7W8ES3IB1qTMvKvx5o8GUT1D_vMYnZPF0zOq1yk1yLQuZjS/exec'; // visual QA demo mode
 const APP_VERSION = '2.6.1-final-safety-fixed';
 const STORAGE_KEY = 'parkar-task-app-v2-6-1-deployment-preview';
 const SESSION_KEY = 'parkar-session-v2-6-1-secure';

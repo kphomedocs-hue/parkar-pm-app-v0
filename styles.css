@@ -764,3 +764,126 @@ h1,h2,h3,p,b,span,small,label,button,.pill,.ghost-btn,.primary-btn,
     flex:1 1 130px;
   }
 }
+
+
+/* v2.7 final name metadata fix */
+.person-info small{
+  display:block;
+  line-height:1.35;
+}
+.person-row .person-info{
+  min-width:0;
+}
+.person-row .person-info b,
+.person-row .person-info small{
+  overflow-wrap:anywhere;
+}
+
+
+/* hardcoded people metadata rule visual safety */
+.person-info small{
+  display:block;
+  line-height:1.35;
+}
+
+
+/* v2.7 hard rule: Login Security must be full-width readable, never a narrow people column */
+.login-security-card{
+  grid-column:1 / -1;
+  width:100%;
+  min-width:0;
+}
+.login-security-list{
+  display:grid;
+  gap:10px;
+  width:100%;
+  overflow-x:auto;
+  padding-bottom:4px;
+}
+.security-table-head,
+.security-row-card{
+  display:grid;
+  grid-template-columns:minmax(220px,1.1fr) minmax(260px,1.4fr) minmax(260px,.9fr);
+  gap:16px;
+  align-items:center;
+  min-width:760px;
+}
+.security-table-head{
+  padding:0 18px 4px;
+  color:var(--muted);
+  font-size:12px;
+  font-weight:900;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+}
+.security-row-card{
+  padding:16px 18px;
+  border-radius:24px;
+  background:rgba(255,255,255,.46);
+  border:1px solid rgba(255,255,255,.72);
+  box-shadow:var(--shadow-small);
+}
+.security-row-card b,
+.security-row-card span,
+.security-row-card small,
+.security-row-card time{
+  overflow-wrap:normal;
+  word-break:normal;
+  white-space:normal;
+  line-height:1.35;
+}
+.security-user,
+.security-action{
+  display:grid;
+  gap:4px;
+  min-width:0;
+}
+.security-user small,
+.security-action small,
+.security-row-card time{
+  color:var(--muted);
+  font-size:13px;
+}
+.security-action span{
+  font-weight:900;
+  color:var(--ink);
+}
+@media(max-width:860px){
+  .security-table-head{display:none;}
+  .security-row-card{
+    min-width:0;
+    grid-template-columns:1fr;
+  }
+}
+
+
+.security-row{
+  width:100%;
+}
+
+
+/* v2.7 admin architecture fix: Admin tabs are separate panes, not children of People layout */
+.admin-pane{
+  width:100%;
+  min-width:0;
+}
+.admin-pane.hidden{
+  display:none!important;
+}
+#adminConsolePane,
+#adminSecurityPane{
+  display:block;
+}
+#adminConsolePane.hidden,
+#adminSecurityPane.hidden{
+  display:none!important;
+}
+#adminConsolePane .admin-console-panel,
+#adminSecurityPane .login-security-card{
+  width:100%;
+  max-width:none;
+}
+#adminConsolePane .admin-console-panel{
+  display:grid;
+  gap:18px;
+}

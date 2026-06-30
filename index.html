@@ -34,7 +34,7 @@
         <button class="nav-item active" data-view="dashboard"><span>▦</span> Dashboard</button>
         <button class="nav-item" data-view="tasks"><span>☑</span> Tasks</button>
         <button class="nav-item" data-view="team"><span>◉</span> Team</button>
-        <button class="nav-item" data-view="people"><span>⚙</span> Admin</button>
+        <button class="nav-item" data-view="admin"><span>⚙</span> Admin</button>
       </nav>
       <div class="sidebar-user-actions sidebar-logout-bottom"><button id="logoutBtn" class="ghost-btn compact-logout">Logout</button></div>
     </aside>
@@ -158,10 +158,32 @@
         <div class="team-tab-pane hidden" id="teamWorkloadPane"><div class="panel table-card"><div class="panel-head"><div><h2>Workload</h2><p>Open, overdue, review and correction load by person.</p></div></div><table><thead><tr><th>Person</th><th>Role</th><th>Open</th><th>Overdue</th><th>Sent for Review</th><th>Needs Correction</th><th>Last Updated</th></tr></thead><tbody id="teamWorkloadBody"></tbody></table></div></div>
       </section>
 
-      <section class="view" id="peopleView">
-        <div class="section-tabs panel compact-tabs admin-tabs"><button class="section-tab active" data-admin-tab="people" data-view-target="people">People</button><button class="section-tab owner-only-tab" data-admin-tab="console">Console</button><button class="section-tab owner-only-tab" data-admin-tab="audit" data-view-target="audit">Audit & Backup</button><button class="section-tab owner-only-tab" data-admin-tab="security">Login Security</button></div>
-        <div class="form-grid people-layout">
-          <div class="panel form-card admin-console-panel hidden" id="adminConsolePanel">
+      <section class="view" id="adminView">
+        <div class="section-tabs panel compact-tabs admin-tabs"><button class="section-tab active" data-admin-tab="people" data-view-target="admin">People</button><button class="section-tab owner-only-tab" data-admin-tab="console">Console</button><button class="section-tab owner-only-tab" data-admin-tab="audit" data-view-target="audit">Audit & Backup</button><button class="section-tab owner-only-tab" data-admin-tab="security">Login Security</button></div>
+        <div class="admin-pane" id="adminPeoplePane">
+          <div class="form-grid people-layout">
+            <form class="panel form-card" id="personForm">
+            <h2>People Management</h2>
+            <p id="peopleHelp">Owner can add and edit people. Manager can edit own staff.</p>
+            <input type="hidden" id="personEditingCode" />
+            <label>Person ID<input id="personCode" placeholder="Assigned automatically" readonly /></label>
+            <label>Name<input id="personName" placeholder="Full name" required /></label>
+            <label>Role<select id="personRole"></select></label>
+            <label>Email<input id="personEmail" type="email" placeholder="email@domain.com" /></label>
+            <label>PIN<input id="personPin" inputmode="numeric" placeholder="Set / reset PIN" /><small>Required for new person. Leave blank while editing to keep existing PIN.</small></label>
+            <label>Reporting Head<select id="personManager"></select></label>
+            <label>Active Status<select id="personActive"><option>Yes</option><option>No</option></select></label>
+            <button class="primary-btn" type="submit">Save Person</button>
+            <button class="ghost-btn" id="clearPersonFormBtn" type="button">Clear</button>
+          </form>
+            <div class="panel table-card people-card">
+            <div class="panel-head"><div><h2>Owner / Manager / Staff</h2><p>IDs remain fixed. Names, emails, PINs, role, active status and safe deletion can be managed.</p></div></div>
+            <div class="people-list" id="peopleList"></div>
+          </div>
+          </div>
+        </div>
+        <div class="admin-pane hidden" id="adminConsolePane">
+          <div class="panel form-card admin-console-panel" id="adminConsolePanel">
             <h2>System Console</h2>
             <p>Refresh mode, PIN changes, deployment status, and owner-only login/security checks.</p>
 
@@ -176,24 +198,8 @@
             </div>
             <div class="console-note">Login security is owner-only. The app records available device/browser/timezone details. Browser GPS is not requested automatically.</div>
           </div>
-          <form class="panel form-card" id="personForm">
-            <h2>People Management</h2>
-            <p id="peopleHelp">Owner can add and edit people. Manager can edit own staff.</p>
-            <input type="hidden" id="personEditingCode" />
-            <label>Person ID<input id="personCode" placeholder="Assigned automatically" readonly /></label>
-            <label>Name<input id="personName" placeholder="Full name" required /></label>
-            <label>Role<select id="personRole"></select></label>
-            <label>Email<input id="personEmail" type="email" placeholder="email@domain.com" /></label>
-            <label>PIN<input id="personPin" inputmode="numeric" placeholder="Set / reset PIN" /><small>Required for new person. Leave blank while editing to keep existing PIN.</small></label>
-            <label>Reporting Head<select id="personManager"></select></label>
-            <label>Active Status<select id="personActive"><option>Yes</option><option>No</option></select></label>
-            <button class="primary-btn" type="submit">Save Person</button>
-            <button class="ghost-btn" id="clearPersonFormBtn" type="button">Clear</button>
-          </form>
-          <div class="panel table-card people-card">
-            <div class="panel-head"><div><h2>Owner / Manager / Staff</h2><p>IDs remain fixed. Names, emails, PINs, role, active status and safe deletion can be managed.</p></div></div>
-            <div class="people-list" id="peopleList"></div>
-          </div>
+        </div>
+        <div class="admin-pane hidden" id="adminSecurityPane">
           <div class="panel table-card login-security-card" id="loginSecurityPanel">
             <div class="panel-head"><div><h2>Login Security</h2><p>Login audit history and account security events.</p></div></div>
             <div class="login-security-list" id="loginSecurityList"></div>
@@ -202,7 +208,7 @@
       </section>
 
       <section class="view" id="auditView">
-        <div class="section-tabs panel compact-tabs admin-tabs"><button class="section-tab" data-admin-tab="people" data-view-target="people">People</button><button class="section-tab owner-only-tab" data-admin-tab="console" data-view-target="people">Console</button><button class="section-tab active owner-only-tab" data-admin-tab="audit" data-view-target="audit">Audit & Backup</button><button class="section-tab owner-only-tab" data-admin-tab="security" data-view-target="people">Login Security</button></div>
+        <div class="section-tabs panel compact-tabs admin-tabs"><button class="section-tab" data-admin-tab="people" data-view-target="admin">People</button><button class="section-tab owner-only-tab" data-admin-tab="console" data-view-target="admin">Console</button><button class="section-tab active owner-only-tab" data-admin-tab="audit" data-view-target="audit">Audit & Backup</button><button class="section-tab owner-only-tab" data-admin-tab="security" data-view-target="admin">Login Security</button></div>
         <div class="audit-hero panel">
           <div>
             <p class="eyebrow">Owner Control</p>

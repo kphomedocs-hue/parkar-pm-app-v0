@@ -138,6 +138,48 @@ function personByCode(code){ return people().find(s=>s.code===code); }
 function personName(code){ const p = personByCode(code); return p?.name || deletedPersonLabel(code) || code || '-'; }
 function personDisplay(code){ const p = personByCode(code); return p ? `${p.name || p.code} (${p.code})` : (deletedPersonLabel(code) || code || '-'); }
 function personMeta(code){ const p = personByCode(code); return p ? `${p.code} · ${p.role || '-'}${p.email ? ' · ' + p.email : ''}` : (code || '-'); }
+// HARD RULE: People row metadata must be generated only here.
+// Do not build People row metadata inline in renderPeople().
+function cleanPersonEmail(p){ return clean(p?.email) || 'No email'; }
+function personActiveLabel(p){ return clean(p?.active || 'Yes') === 'No' ? 'Inactive' : 'Active'; }
+function hardcodedReportingHeadText(p){
+  if(!p || p.role === 'Owner') return '';
+  return p.managerCode ? `Reporting Head: ${reportingHeadLabel(p.managerCode)}` : 'Reporting Head: Not assigned';
+}
+function peopleRowMeta(p){
+  const role = clean(p?.role);
+  const base = [clean(p?.code), role, cleanPersonEmail(p)];
+  if(role === 'Owner'){
+    base.push(personActiveLabel(p));
+    return base.filter(Boolean).join(' · ');
+  }
+  if(role === 'Manager' || role === 'Staff'){
+    base.push(hardcodedReportingHeadText(p));
+    base.push(personActiveLabel(p));
+    return base.filter(Boolean).join(' · ');
+  }
+  base.push(personActiveLabel(p));
+  return base.filter(Boolean).join(' · ');
+}
+
+function assertAdminArchitectureHardRule(){
+  const security = $('loginSecurityPanel');
+  const consolePanel = $('adminConsolePanel');
+  if(security && security.closest('.people-layout')) throw new Error('Admin architecture failed: Login Security is inside People layout.');
+  if(consolePanel && consolePanel.closest('.people-layout')) throw new Error('Admin architecture failed: Console is inside People layout.');
+}
+
+function assertPeopleMetadataHardRule(){
+  const sampleOwner = {code:'O001', role:'Owner', email:'owner@example.com', active:'Yes'};
+  const ownerMeta = peopleRowMeta(sampleOwner);
+  if(ownerMeta.includes('Manager' + ':') || ownerMeta.includes('Reporting Head:')){
+    throw new Error('People metadata hard rule failed for Owner row.');
+  }
+  const renderText = String(renderPeople);
+  if(renderText.includes('Manager' + ': ${escapeHtml(managerName)}') || renderText.includes('Manager' + ':')){
+    throw new Error('People metadata hard rule failed: renderPeople contains old inline Manager label.');
+  }
+}
 function auditActionLabel(action=''){ return clean(action).replaceAll('_',' ').toLowerCase().replace(/\b\w/g, ch => ch.toUpperCase()); }
 function deletedPersonLabel(code){ return code ? `Removed person (${code})` : ''; }
 function reportingHeadOptions(){
@@ -424,20 +466,20 @@ function showView(view){
   if(!target){ currentView='dashboard'; $('dashboardView')?.classList.add('active'); }
   else target.classList.add('active');
   document.querySelectorAll('.nav-item').forEach(b=>{
-    const group = ['add','update'].includes(view) ? 'tasks' : ['people','audit'].includes(view) ? 'people' : view;
+    const group = ['add','update'].includes(view) ? 'tasks' : ['admin','audit'].includes(view) ? 'admin' : view;
     b.classList.toggle('active', b.dataset.view===group);
   });
-  const titles={dashboard:'Dashboard',tasks:'Tasks',add:'Tasks',update:'Tasks',team:'Team',people:'Admin',audit:'Admin'};
+  const titles={dashboard:'Dashboard',tasks:'Tasks',add:'Tasks',update:'Tasks',team:'Team',admin:'Admin',audit:'Admin'};
   $('pageTitle').textContent=titles[currentView] || 'Dashboard';
   if(previousView === 'tasks' && currentView !== 'tasks') closeTaskSidePanel();
   renderAll();
 }
 function updateNavPermissions(){
   const user = currentUser();
-  const adminNav = document.querySelector('[data-view="people"]');
+  const adminNav = document.querySelector('[data-view="admin"]');
   if(adminNav) adminNav.style.display = ['Owner','Manager'].includes(user.role) ? '' : 'none';
   document.querySelectorAll('.owner-only-tab').forEach(el=>{ el.style.display = user.role === 'Owner' ? '' : 'none'; });
-  if(user.role === 'Staff' && ['people','audit'].includes(currentView)) showView('dashboard');
+  if(user.role === 'Staff' && ['admin','audit'].includes(currentView)) showView('dashboard');
   if(user.role !== 'Owner' && currentView === 'audit') showView('dashboard');
   const latestBtn = $('latestActivityBtn');
   if(latestBtn) latestBtn.style.display = user.role === 'Owner' ? '' : 'none';
@@ -689,7 +731,7 @@ function renderSelectedTaskDetail(){
 }
 function renderTeam(){
   const codes=visiblePeopleCodes(); const rows=people().filter(s=>codes.includes(s.code));
-  $('teamTableBody').innerHTML=rows.map(s=>`<tr><td><b>${escapeHtml(s.code)}</b></td><td>${escapeHtml(s.name)}</td><td>${escapeHtml(s.role)}</td><td>${escapeHtml(s.managerCode ? personDisplay(s.managerCode) : '-')}</td><td>${escapeHtml(s.email || '-')}</td><td>${escapeHtml(s.active || 'Yes')}</td><td>${state.tasks.filter(t=>t.assignedTo===s.code && isOpen(t)).length}</td></tr>`).join('') || '<tr><td colspan="7">No team records visible.</td></tr>';
+  $('teamTableBody').innerHTML=rows.map(s=>`<tr><td><b>${escapeHtml(s.code)}</b></td><td>${escapeHtml(s.name)}</td><td>${escapeHtml(s.role)}</td><td>${escapeHtml(s.role === 'Owner' ? 'No reporting head' : (s.managerCode ? reportingHeadLabel(s.managerCode) : 'Not assigned'))}</td><td>${escapeHtml(s.email || '-')}</td><td>${escapeHtml(s.active || 'Yes')}</td><td>${state.tasks.filter(t=>t.assignedTo===s.code && isOpen(t)).length}</td></tr>`).join('') || '<tr><td colspan="7">No team records visible.</td></tr>';
   renderTeamWorkload();
 }
 function renderTeamWorkload(){
@@ -709,16 +751,15 @@ function showTeamTab(tab='directory'){
 }
 function showAdminTab(tab='people'){
   if(tab==='audit'){ showView('audit'); return; }
-  if(currentView !== 'people') showView('people');
+  if(currentView !== 'admin') showView('admin');
   document.querySelectorAll('[data-admin-tab]').forEach(btn=>btn.classList.toggle('active', btn.dataset.adminTab===tab));
+  const showPeople = tab==='people';
   const showConsole = tab==='console';
   const showSecurity = tab==='security';
-  const showPeople = tab==='people';
-  $('personForm')?.classList.toggle('hidden', !showPeople);
-  document.querySelector('.people-card')?.classList.toggle('hidden', !showPeople);
-  $('adminConsolePanel')?.classList.toggle('hidden', !showConsole);
-  $('loginSecurityPanel')?.classList.toggle('hidden', !showSecurity);
-  renderLoginSecurity();
+  $('adminPeoplePane')?.classList.toggle('hidden', !showPeople);
+  $('adminConsolePane')?.classList.toggle('hidden', !showConsole);
+  $('adminSecurityPane')?.classList.toggle('hidden', !showSecurity);
+  if(showSecurity) renderLoginSecurity();
 }
 function renderLoginSecurity(){
   const list=$('loginSecurityList'); if(!list) return;
@@ -732,17 +773,25 @@ function renderLoginSecurity(){
     list.innerHTML = emptyState('Login audit records will appear after live login activity.');
     return;
   }
-  list.innerHTML = events.map(a=>`<div class="security-row"><div><b>${escapeHtml(personName(a.by))}</b><span>${escapeHtml(auditActionLabel(a.action))}</span></div><small>${escapeHtml(a.time || '')}</small></div>`).join('');
+  list.innerHTML = `<div class="security-table-head"><span>User</span><span>Action</span><span>Time</span></div>` + events.map(a=>{
+    const detail = clean(a.reason || a.detail || '');
+    return `<div class="security-row security-row-card">
+      <div class="security-user"><b>${escapeHtml(personName(a.by))}</b><small>${escapeHtml(personMeta(a.by))}</small></div>
+      <div class="security-action"><span>${escapeHtml(auditActionLabel(a.action))}</span>${detail ? `<small>${escapeHtml(detail)}</small>` : ''}</div>
+      <time>${escapeHtml(a.time || '')}</time>
+    </div>`;
+  }).join('');
 }
 
 function canEditPerson(target){ const user = currentUser(); if(!user || !target) return false; if(user.role === 'Owner') return true; if(user.role === 'Manager') return target.role === 'Staff' && target.managerCode === user.code; return false; }
 function peopleRowsForUser(){ const user=currentUser(); if(!user) return []; if(user.role === 'Owner') return people(); if(user.role === 'Manager') return people().filter(s => s.role === 'Staff' && s.managerCode === user.code); return []; }
+// renderPeople uses peopleRowMeta hard rule; do not build role/reporting labels inline.
 function renderPeople(){
   const list = $('peopleList'); if(!list) return; const rows = peopleRowsForUser(); const user=currentUser();
-  $('peopleHelp').textContent = user.role === 'Owner' ? 'Owner can add, rename, set email/PIN, assign managers and deactivate people.' : 'Manager can rename and set PIN for staff under their team only.';
+  $('peopleHelp').textContent = user.role === 'Owner' ? 'Owner can add, rename, set email/PIN, assign reporting heads and deactivate people.' : 'Manager can rename and set PIN for staff under their team only.';
   $('personForm').style.display = ['Owner','Manager'].includes(user.role) ? 'grid' : 'none';
   if(!rows.length){ list.innerHTML = `<div class="empty-state"><b>No people settings available.</b><span>Staff cannot manage users.</span></div>`; return; }
-  list.innerHTML = rows.map(s=>{ const editable = canEditPerson(s); const managerName = s.managerCode ? personDisplay(s.managerCode) : '-'; const deleted = s.deleted === 'Yes'; const canDelete = currentUser()?.role === 'Owner' && ['Manager','Staff'].includes(s.role); return `<div class="person-row ${deleted ? 'deleted-person' : ''}" data-code="${escapeHtml(s.code)}"><div class="person-avatar">${escapeHtml(initials(s.name || s.code))}</div><div class="person-info"><b>${escapeHtml(s.name || s.code)}${deleted ? ' · Deleted' : ''}</b><small>${escapeHtml(s.code)} · ${escapeHtml(s.role)} · ${escapeHtml(s.email || '-')} · Manager: ${escapeHtml(managerName)} · ${escapeHtml(s.active || 'Yes')}</small></div><button class="pill edit-person" data-code="${escapeHtml(s.code)}" ${editable && !deleted ? '' : 'disabled'}>Edit</button><button class="pill danger-person" data-code="${escapeHtml(s.code)}" ${editable && s.role==='Staff' && !deleted ? '' : 'disabled'}>${s.active==='No'?'Activate':'Deactivate'}</button><button class="pill danger-task delete-person" data-code="${escapeHtml(s.code)}" ${canDelete && !deleted ? '' : 'disabled'}>Delete</button></div>`; }).join('') + `<div class="staff-capacity-note">Owner can delete tasks and staff/manager records. If a person has task history, deletion becomes safe deactivation so old records stay readable.</div>`;
+  list.innerHTML = rows.map(s=>{ const editable = canEditPerson(s); const deleted = s.deleted === 'Yes'; const canDelete = currentUser()?.role === 'Owner' && ['Manager','Staff'].includes(s.role); return `<div class="person-row ${deleted ? 'deleted-person' : ''}" data-code="${escapeHtml(s.code)}"><div class="person-avatar">${escapeHtml(initials(s.name || s.code))}</div><div class="person-info"><b>${escapeHtml(s.name || s.code)}${deleted ? ' · Deleted' : ''}</b><small>${escapeHtml(peopleRowMeta(s))}</small></div><button class="pill edit-person" data-code="${escapeHtml(s.code)}" ${editable && !deleted ? '' : 'disabled'}>Edit</button><button class="pill danger-person" data-code="${escapeHtml(s.code)}" ${editable && s.role==='Staff' && !deleted ? '' : 'disabled'}>${s.active==='No'?'Activate':'Deactivate'}</button><button class="pill danger-task delete-person" data-code="${escapeHtml(s.code)}" ${canDelete && !deleted ? '' : 'disabled'}>Delete</button></div>`; }).join('') + `<div class="staff-capacity-note">Owner can delete tasks and staff/manager records. If a person has task history, deletion becomes safe deactivation so old records stay readable.</div>`;
 }
 function renderPersonFormRules(){
   const user=currentUser(); if(!user) return;
@@ -769,7 +818,7 @@ async function handlePeopleActions(e){
   const edit = e.target.closest('.edit-person');
   const danger=e.target.closest('.danger-person');
   const del=e.target.closest('.delete-person');
-  if(edit){ const p=personByCode(edit.dataset.code); if(!p) return; $('personEditingCode').value=p.code; $('personCode').value=p.code; $('personName').value=p.name||''; $('personEmail').value=p.email||''; $('personPin').value= API_URL ? '' : (p.pin||''); $('personRole').value=p.role; $('personManager').value=p.managerCode||''; $('personActive').value=p.active||'Yes'; renderPersonFormRules(); showView('people'); return; }
+  if(edit){ const p=personByCode(edit.dataset.code); if(!p) return; $('personEditingCode').value=p.code; $('personCode').value=p.code; $('personName').value=p.name||''; $('personEmail').value=p.email||''; $('personPin').value= API_URL ? '' : (p.pin||''); $('personRole').value=p.role; $('personManager').value=p.managerCode||''; $('personActive').value=p.active||'Yes'; renderPersonFormRules(); showView('admin'); return; }
   if(danger){ const p=personByCode(danger.dataset.code); if(!p || !canEditPerson(p)) return; const nextActive = p.active==='No' ? 'Yes' : 'No';
     if(API_URL){ try{ const payload = await apiPost({ action:'upsertPerson', person:{...p, active:nextActive} }); master = payload.data || await fetchBootstrap(); state = JSON.parse(JSON.stringify(master)); renderAll(); toast(`${p.name} ${nextActive==='No'?'deactivated':'activated'}`); } catch(err){ showError(err); } return; }
     p.active = nextActive; saveState(); renderAll(); toast(`${p.name} ${p.active==='No'?'deactivated':'activated'}`); return; }

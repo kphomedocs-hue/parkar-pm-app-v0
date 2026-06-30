@@ -87,7 +87,7 @@
               <label class="compact-filter-label"><span>Staff</span><select id="filterStaff"></select></label>
               <select id="sortBy" aria-label="Sort tasks"></select>
             </div>
-            <div class="table-card panel"><table><thead><tr><th>Task ID</th><th>Description</th><th>Assigned</th><th>Priority</th><th>Due</th><th>Status</th><th>Remarks</th><th>Link</th><th id="taskActionHead">Action</th></tr></thead><tbody id="taskTableBody"></tbody></table></div>
+            <div class="task-card-list" id="taskCardList"></div><div class="table-card panel legacy-task-table"><table><thead><tr><th>Task ID</th><th>Description</th><th>Assigned</th><th>Priority</th><th>Due</th><th>Status</th><th>Remarks</th><th>Link</th><th id="taskActionHead">Action</th></tr></thead><tbody id="taskTableBody"></tbody></table></div>
           </div>
           <aside class="task-side-panel panel hidden" id="taskSidePanel">
             <div class="panel-head side-panel-head">
@@ -161,9 +161,10 @@
       <section class="view" id="peopleView">
         <div class="section-tabs panel compact-tabs admin-tabs"><button class="section-tab active" data-admin-tab="people" data-view-target="people">People</button><button class="section-tab owner-only-tab" data-admin-tab="console">Console</button><button class="section-tab owner-only-tab" data-admin-tab="audit" data-view-target="audit">Audit & Backup</button><button class="section-tab owner-only-tab" data-admin-tab="security">Login Security</button></div>
         <div class="form-grid people-layout">
-          <form class="panel form-card" id="personForm">
-            <h2>People Management</h2>
-            <p id="peopleHelp">Owner can add and edit people. Manager can edit own staff.</p>
+          <div class="panel form-card admin-console-panel hidden" id="adminConsolePanel">
+            <h2>System Console</h2>
+            <p>Refresh mode, PIN changes, deployment status, and owner-only login/security checks.</p>
+
             <div class="admin-console-card">
               <div class="small-title">Admin Console</div>
               <div class="admin-console-grid">
@@ -173,6 +174,11 @@
               </div>
               <div class="refresh-status admin-refresh-status" id="refreshStatus">Manual refresh only</div>
             </div>
+            <div class="console-note">Login security is owner-only. The app records available device/browser/timezone details. Browser GPS is not requested automatically.</div>
+          </div>
+          <form class="panel form-card" id="personForm">
+            <h2>People Management</h2>
+            <p id="peopleHelp">Owner can add and edit people. Manager can edit own staff.</p>
             <input type="hidden" id="personEditingCode" />
             <label>Person ID<input id="personCode" placeholder="Assigned automatically" readonly /></label>
             <label>Name<input id="personName" placeholder="Full name" required /></label>
@@ -272,6 +278,29 @@
   </div>
 
   <div id="toast" class="toast"></div>
-  <script src="app.js"></script>
+
+  <script>
+    // Immediate login feedback fallback. This prevents the login screen from feeling frozen
+    // even if the external app.js is cached or the Apps Script request is slow.
+    document.addEventListener('DOMContentLoaded', function () {
+      var form = document.getElementById('loginForm');
+      if (!form || form.dataset.loginFeedbackBound === '1') return;
+      form.dataset.loginFeedbackBound = '1';
+      form.addEventListener('submit', function () {
+        var btn = document.getElementById('loginSubmitBtn') || form.querySelector('button[type="submit"]');
+        var status = document.getElementById('loginStatus');
+        if (btn) {
+          btn.dataset.originalText = btn.dataset.originalText || btn.textContent;
+          btn.textContent = 'Logging in...';
+          btn.disabled = true;
+          btn.dataset.busy = '1';
+        }
+        if (status) status.textContent = 'Checking login. Please wait...';
+        document.body.classList.add('login-working');
+      }, true);
+    });
+  </script>
+
+  <script src="app.js?v=2.6.1-login-owner-final"></script>
 </body>
 </html>

@@ -501,3 +501,266 @@ button[data-busy="1"]{
     grid-column:1;
   }
 }
+
+
+/* v2.6.1 final login feedback recheck */
+.login-status{
+  min-height:24px;
+  margin-top:-4px;
+  color:var(--brand-bronze);
+  font-size:14px;
+  font-weight:900;
+  text-align:center;
+}
+.login-working .login-card{
+  position:relative;
+}
+.login-working .login-card::after{
+  content:"";
+  position:absolute;
+  right:28px;
+  bottom:28px;
+  width:18px;
+  height:18px;
+  border-radius:50%;
+  border:3px solid rgba(148,82,11,.18);
+  border-top-color:var(--brand-bronze);
+  animation:loginSpin .75s linear infinite;
+}
+#loginSubmitBtn:disabled,
+button[data-busy="1"]{
+  opacity:.72;
+  cursor:progress;
+}
+@keyframes loginSpin{to{transform:rotate(360deg)}}
+
+
+/* v2.7 next phase UI: cards, role dashboards, admin separation, timeline */
+.task-card-list{
+  display:grid;
+  gap:12px;
+  margin-bottom:14px;
+}
+.task-card{
+  border-radius:28px;
+  padding:18px;
+  background:linear-gradient(145deg,rgba(255,250,242,.82),rgba(238,231,218,.58));
+  border:1px solid rgba(255,255,255,.78);
+  box-shadow:var(--shadow-small);
+  border-left:7px solid rgba(148,82,11,.35);
+}
+.task-card.Urgent{border-left-color:#d86b62}
+.task-card.High{border-left-color:#c79b4e}
+.task-card.Medium{border-left-color:#76bdcb}
+.task-card.Low{border-left-color:#8fc5a6}
+.task-card-main{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:14px;
+}
+.task-card-title{
+  font-weight:950;
+  font-size:16px;
+  color:var(--ink);
+}
+.task-card-meta,.task-card-sub{
+  color:var(--muted);
+  font-size:13px;
+  margin-top:5px;
+  line-height:1.35;
+}
+.task-card-badges,.task-card-actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  justify-content:flex-end;
+}
+.task-card-actions{
+  justify-content:flex-start;
+  margin-top:13px;
+}
+.revision-badge{
+  background:#fff0cf;
+  color:#8b5d21;
+}
+.legacy-task-table{
+  display:none;
+}
+.admin-console-panel{
+  align-self:start;
+}
+.console-note{
+  font-size:13px;
+  color:var(--muted);
+  line-height:1.45;
+  padding:12px 14px;
+  border-radius:18px;
+  background:rgba(255,255,255,.46);
+}
+.timeline-box{
+  margin-top:18px;
+  display:grid;
+  gap:8px;
+}
+.timeline-box h3{
+  margin:0;
+  font-size:15px;
+}
+.dashboard-task-jump{
+  cursor:pointer;
+}
+@media(max-width:760px){
+  .task-card-main{
+    flex-direction:column;
+  }
+  .task-card-badges,.task-card-actions{
+    justify-content:flex-start;
+  }
+}
+
+
+/* v2.7 final visual QA patch: text wrap and no-crop safety */
+:root{
+  --safe-word-break: break-word;
+}
+.panel,
+.kpi-card,
+.task-card,
+.person-row,
+.login-user-badge,
+.admin-console-panel,
+.table-card,
+.sidebar,
+.main{
+  min-width:0;
+}
+h1,h2,h3,p,b,span,small,label,button,.pill,.ghost-btn,.primary-btn,
+.task-title,.task-meta,.task-card-title,.task-card-meta,.task-card-sub,
+.person-info,.person-info b,.person-info small,
+.detail-line span,.timeline-item span,.security-row span,.audit-note,
+.brand strong,.brand span,.nav-item{
+  overflow-wrap:anywhere;
+  word-break:normal;
+}
+.kpi-card{
+  min-height:178px;
+}
+.kpi-card p,
+.kpi-card span{
+  max-width:100%;
+}
+.dashboard-grid.final-dashboard-grid{
+  grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);
+}
+.final-dashboard-grid .wide{
+  min-height:auto;
+}
+.task-row{
+  min-width:0;
+}
+.task-row > div,
+.task-row .task-title,
+.task-row .task-meta{
+  min-width:0;
+}
+.task-card-main{
+  min-width:0;
+}
+.task-card-main > div:first-child{
+  min-width:0;
+  flex:1 1 auto;
+}
+.task-card-badges{
+  flex:0 0 auto;
+  max-width:46%;
+}
+.task-card-actions .pill,
+.task-card-actions .link-pill{
+  white-space:normal;
+}
+.person-row{
+  grid-template-columns:54px minmax(0,1fr) auto auto auto;
+}
+.people-list .person-row .pill{
+  min-width:86px;
+  max-width:140px;
+  white-space:normal;
+}
+.admin-tabs .section-tab{
+  white-space:normal;
+  text-align:center;
+  line-height:1.2;
+}
+.admin-console-grid{
+  align-items:stretch!important;
+}
+.admin-console-grid .ghost-btn{
+  min-height:46px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  white-space:normal!important;
+  line-height:1.2;
+}
+.compact-filter-label{
+  min-width:0;
+}
+.compact-filter-label span{
+  flex:0 0 auto;
+}
+.compact-filter-label select{
+  min-width:0!important;
+}
+.sidebar-brand{
+  min-height:auto;
+}
+.sidebar-brand strong{
+  overflow-wrap:normal;
+}
+.login-user-badge{
+  width:100%;
+}
+.login-user-badge b,
+.login-user-badge span{
+  max-width:100%;
+}
+.summary-table,
+.summary-table th,
+.summary-table td{
+  overflow-wrap:anywhere;
+}
+.timeline-item{
+  min-width:0;
+}
+.timeline-item span{
+  display:block;
+}
+.status-check-grid div{
+  min-width:0;
+}
+@media(max-width:1200px){
+  .dashboard-grid.final-dashboard-grid{
+    grid-template-columns:1fr;
+  }
+  .task-card-badges{
+    max-width:100%;
+    justify-content:flex-start;
+  }
+  .task-card-main{
+    flex-direction:column;
+  }
+}
+@media(max-width:760px){
+  .person-row{
+    grid-template-columns:42px minmax(0,1fr);
+  }
+  .people-list .person-row .pill{
+    grid-column:2;
+    justify-self:start;
+    max-width:100%;
+  }
+  .admin-tabs .section-tab{
+    flex:1 1 130px;
+  }
+}

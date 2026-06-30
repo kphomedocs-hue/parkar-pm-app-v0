@@ -48,6 +48,67 @@ function isCompletedThisMonth(t){
   const d = new Date(t.completedDate);
   return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
 }
+
+function dateForHistory(t){
+  return clean(t.completedDate || t.lastUpdated || t.dateAssigned);
+}
+function withinLastDays(dateValue, days=30){
+  if(!dateValue) return false;
+  const d = new Date(dateValue);
+  if(Number.isNaN(d.getTime())) return false;
+  const cutoff = new Date();
+  cutoff.setHours(0,0,0,0);
+  cutoff.setDate(cutoff.getDate() - days);
+  return d >= cutoff;
+}
+function isHistoryTask(t){
+  return ['Completed','Cancelled'].includes(clean(t.status)) || isDeleted(t) || clean(t.archived)==='Yes';
+}
+function allowedByHistoryWindow(t){
+  const user=currentUser();
+  if(!user || user.role === 'Owner') return true;
+  if(!isHistoryTask(t)) return true;
+  return withinLastDays(dateForHistory(t), 30);
+}
+function daysAgoText(dateValue){
+  if(!dateValue) return '-';
+  const d = new Date(dateValue);
+  if(Number.isNaN(d.getTime())) return clean(dateValue);
+  const now = new Date();
+  const diff = Math.floor((new Date(now.toDateString()) - new Date(d.toDateString())) / (1000*60*60*24));
+  if(diff <= 0) return 'Today';
+  if(diff === 1) return 'Yesterday';
+  return `${diff} days ago`;
+}
+function revisionCount(t){
+  const timelineCount = (t.timeline || []).filter(x=>clean(x.action)==='Revision Required').length;
+  const notesCount = (clean(t.historyNotes).match(/Revision Required/g) || []).length;
+  return Math.max(Number(t.revisionCount || 0), timelineCount, notesCount);
+}
+function taskAgeMeta(t){
+  return `Assigned ${daysAgoText(t.dateAssigned)} · Last updated ${daysAgoText(t.lastUpdated)}`;
+}
+function taskDisplayStatus(t){
+  if(isDeleted(t)) return 'Deleted';
+  if(isOverdue(t)) return 'Overdue';
+  return statusLabel(t.status);
+}
+function taskStatusRaw(t){
+  if(isDeleted(t)) return 'Deleted';
+  if(isOverdue(t)) return 'Overdue';
+  return clean(t.status);
+}
+function loginContext(){
+  return {
+    userAgent: navigator.userAgent || '',
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || '',
+    language: navigator.language || '',
+    screen: `${screen.width || ''}x${screen.height || ''}`,
+    platform: navigator.platform || '',
+    // Browser GPS is not requested automatically; owner-only security view shows available device/timezone details.
+    locationPermission: 'not_requested'
+  };
+}
 function lastUpdatedForPerson(code){
   const dates = (state?.tasks || []).filter(t=>t.assignedTo===code && !isDeleted(t) && t.lastUpdated).map(t=>t.lastUpdated).sort();
   return dates.length ? dates[dates.length-1] : '-';
@@ -121,7 +182,7 @@ function visiblePeopleCodes(){
 function visibleTasks(includeDeleted=false){
   const codes = visiblePeopleCodes();
   const q = clean($('globalSearch')?.value).toLowerCase();
-  let rows = state.tasks.filter(t=>(includeDeleted || !isDeleted(t)) && (codes.includes(t.assignedTo) || codes.includes(t.createdBy)));
+  let rows = state.tasks.filter(t=>(includeDeleted || !isDeleted(t)) && (codes.includes(t.assignedTo) || codes.includes(t.createdBy)) && allowedByHistoryWindow(t));
   if(q){ rows = rows.filter(t => Object.values(t).some(v => clean(v).toLowerCase().includes(q)) || clean(personByCode(t.assignedTo)?.name).toLowerCase().includes(q)); }
   return rows;
 }
@@ -227,6 +288,13 @@ function setButtonBusy(btn, busy, busyText='Working...'){
   if(busy){ btn.dataset.originalText = btn.dataset.originalText || btn.textContent; btn.textContent = busyText; btn.disabled = true; btn.dataset.busy = '1'; }
   else { btn.textContent = btn.dataset.originalText || btn.textContent; btn.disabled = false; delete btn.dataset.busy; }
 }
+function setLoginWorking(isWorking, message=''){
+  const statusEl = $('loginStatus');
+  const submitBtn = $('loginSubmitBtn') || document.querySelector('#loginForm button[type="submit"]');
+  document.body.classList.toggle('login-working', !!isWorking);
+  if(statusEl) statusEl.textContent = message || '';
+  if(submitBtn) setButtonBusy(submitBtn, !!isWorking, 'Logging in...');
+}
 function formBusy(e, busy, busyText='Saving...'){
   const form = e?.target; if(!form) return false;
   if(busy && form.dataset.busy === '1') return true;
@@ -251,13 +319,12 @@ async function attemptLogin(e){
   e.preventDefault();
   const submitBtn = e.submitter || $('loginSubmitBtn') || document.querySelector('#loginForm button[type="submit"]');
   const statusEl = $('loginStatus');
-  setButtonBusy(submitBtn, true, 'Logging in...');
-  if(statusEl) statusEl.textContent = 'Checking login. Please wait...';
+  setLoginWorking(true, 'Checking login. Please wait...');
   const emailOrCode = clean($('loginEmail').value).toLowerCase();
   const pin = clean($('loginPin').value);
   try{
     if(API_URL){
-      const payload = await apiPost({ action:'login', login: emailOrCode, pin });
+      const payload = await apiPost({ action:'login', login: emailOrCode, pin, loginContext: loginContext() });
       const user = payload.user || payload.data?.user;
       if(!user || !payload.token) throw new Error('Login could not be completed. Please retry.');
       saveSession(user, payload.token);
@@ -267,18 +334,17 @@ async function attemptLogin(e){
       if(statusEl) statusEl.textContent = 'Preparing dashboard...';
       await maybeForcePinChange(user);
       maybeWarnVersionMismatch(master);
-      migrateDemoState(); lastRefreshAt = new Date(); showApp(); setupRefreshTimer(); toast(`Logged in as ${user.name}`); setButtonBusy(submitBtn, false); if(statusEl) statusEl.textContent = ''; return;
+      migrateDemoState(); lastRefreshAt = new Date(); showApp(); setupRefreshTimer(); toast(`Logged in as ${user.name}`); setLoginWorking(false); return;
     }
     const user = activePeople().find(p => (p.role === 'Staff' ? clean(p.code).toLowerCase() === emailOrCode : clean(p.email).toLowerCase() === emailOrCode || clean(p.code).toLowerCase() === emailOrCode));
-    if(!user || clean(user.pin) !== pin){ toast('Login failed. Check email/code and PIN.'); if(statusEl) statusEl.textContent = 'Login failed. Check email/code and PIN.'; setButtonBusy(submitBtn, false); return; }
+    if(!user || clean(user.pin) !== pin){ toast('Login failed. Check email/code and PIN.'); if(statusEl) statusEl.textContent = 'Login failed. Check email/code and PIN.'; setButtonBusy(submitBtn, false); document.body.classList.remove('login-working'); return; }
     if(statusEl) statusEl.textContent = 'Preparing dashboard...';
     sessionUserCode = user.code;
     storageSet(SESSION_KEY, user.code);
     showApp();
     toast(`Logged in as ${user.name}`);
-    setButtonBusy(submitBtn, false);
-    if(statusEl) statusEl.textContent = '';
-  }catch(err){ setButtonBusy(submitBtn, false); if(statusEl) statusEl.textContent = ''; showError(err); }
+    setLoginWorking(false);
+  }catch(err){ setLoginWorking(false); showError(err); }
 }
 function logout(){ clearSession(); showLogin(); }
 
@@ -426,38 +492,86 @@ function dashboardLabelByRole(user, key){
   };
   return labels[key];
 }
+function dashboardBuckets(rows, user){
+  const openRows = rows.filter(isOpen);
+  const overdueRows = rows.filter(isOverdue);
+  const requestedRows = rows.filter(t=>t.status==='Requested');
+  const reviewRows = rows.filter(t=>t.status==='Ready for Check');
+  const correctionRows = rows.filter(t=>t.status==='Revision Required');
+  const noUpdateRows = rows.filter(noUpdate3Days);
+  const today = todayISO();
+  const week = addDays(7);
+  const dueTodayRows = rows.filter(t=>isOpen(t) && t.dueDate === today);
+  const dueWeekRows = rows.filter(t=>isOpen(t) && t.dueDate && t.dueDate <= week);
+  return {openRows, overdueRows, requestedRows, reviewRows, correctionRows, noUpdateRows, dueTodayRows, dueWeekRows};
+}
 function renderDashboard(){
   const user=currentUser();
   const rows = visibleTasks();
-  const openRows = rows.filter(isOpen);
-  const reviewRows = user?.role === 'Staff' ? rows.filter(t=>t.status==='Ready for Check') : rows.filter(t=>['Ready for Check','Requested'].includes(t.status));
+  const b = dashboardBuckets(rows, user);
   const completedMonthRows = rows.filter(isCompletedThisMonth);
-  $('kpiOpenLabel').textContent = dashboardLabelByRole(user,'open');
-  $('kpiOverdueLabel').textContent = dashboardLabelByRole(user,'overdue');
-  $('kpiApprovalLabel').textContent = dashboardLabelByRole(user,'review');
-  $('kpiOpen').textContent=openRows.length;
-  $('kpiOverdue').textContent=rows.filter(isOverdue).length;
-  $('kpiApproval').textContent=reviewRows.length;
-  $('kpiCompleted').textContent=completedMonthRows.length;
 
-  const attention = [
-    ...rows.filter(t=>isOverdue(t) && ['Urgent','High'].includes(t.priority)).map(t=>({type:'Overdue', task:t})),
-    ...reviewRows.map(t=>({type:t.status==='Requested'?'Approval':'Review', task:t})),
-    ...rows.filter(t=>t.status==='Revision Required').map(t=>({type:'Correction', task:t}))
-  ].slice(0,6);
-  $('attentionTitle').textContent = user?.role === 'Staff' ? 'My Next Actions' : 'Needs Attention';
-  $('attentionList').innerHTML = attention.length ? attention.map(({type,task:t})=>`<div class="task-row compact"><div class="circle"></div><div><div class="task-title">${escapeHtml(t.taskDescription)}</div><div class="task-meta">${escapeHtml(type)} · ${escapeHtml(statusLabel(t.status))} · Due ${escapeHtml(t.dueDate || '-')}</div></div><span class="badge ${cssToken(t.priority)}">${escapeHtml(t.priority)}</span></div>`).join('') : emptyState(user?.role === 'Staff' ? 'No urgent next action.' : 'No urgent action pending.');
+  if(user?.role === 'Staff'){
+    $('kpiOpenLabel').textContent = 'My Tasks';
+    $('kpiOverdueLabel').textContent = 'Due Today';
+    $('kpiApprovalLabel').textContent = 'Due This Week';
+    $('kpiOpen').textContent=b.openRows.length;
+    $('kpiOverdue').textContent=b.dueTodayRows.length;
+    $('kpiApproval').textContent=b.dueWeekRows.length;
+    $('kpiCompleted').textContent=b.correctionRows.length;
+    $('kpiCompletedCard').querySelector('p').textContent='Needs Correction';
+    $('kpiCompletedCard').querySelector('span').textContent='Action required';
+  } else if(user?.role === 'Manager'){
+    $('kpiOpenLabel').textContent = 'Team Review';
+    $('kpiOverdueLabel').textContent = 'Team Overdue';
+    $('kpiApprovalLabel').textContent = 'Team Workload';
+    $('kpiOpen').textContent=b.reviewRows.length;
+    $('kpiOverdue').textContent=b.overdueRows.length;
+    $('kpiApproval').textContent=b.openRows.length;
+    $('kpiCompleted').textContent=completedMonthRows.length;
+    $('kpiCompletedCard').querySelector('p').textContent='Completed This Month';
+    $('kpiCompletedCard').querySelector('span').textContent='Monthly output';
+  } else {
+    $('kpiOpenLabel').textContent = 'Waiting Review';
+    $('kpiOverdueLabel').textContent = 'Overdue';
+    $('kpiApprovalLabel').textContent = 'Waiting Approval';
+    $('kpiOpen').textContent=b.reviewRows.length;
+    $('kpiOverdue').textContent=b.overdueRows.length;
+    $('kpiApproval').textContent=b.requestedRows.length;
+    $('kpiCompleted').textContent=b.noUpdateRows.length;
+    $('kpiCompletedCard').querySelector('p').textContent='No Update 3 Days';
+    $('kpiCompletedCard').querySelector('span').textContent='Follow-up required';
+  }
+
+  const attention = user?.role === 'Staff'
+    ? [
+        ...b.correctionRows.map(t=>({type:'Needs Correction', task:t})),
+        ...b.dueTodayRows.map(t=>({type:'Due Today', task:t})),
+        ...b.overdueRows.map(t=>({type:'Overdue', task:t})),
+        ...b.dueWeekRows.map(t=>({type:'Due This Week', task:t}))
+      ]
+    : user?.role === 'Manager'
+      ? [
+          ...b.reviewRows.map(t=>({type:'Team Review', task:t})),
+          ...b.overdueRows.map(t=>({type:'Team Overdue', task:t})),
+          ...b.correctionRows.map(t=>({type:'Needs Correction', task:t}))
+        ]
+      : [
+          ...b.reviewRows.map(t=>({type:'Review', task:t})),
+          ...b.requestedRows.map(t=>({type:'Approval', task:t})),
+          ...b.overdueRows.map(t=>({type:'Overdue', task:t})),
+          ...b.noUpdateRows.map(t=>({type:'No Update', task:t}))
+        ];
+
+  $('attentionTitle').textContent = user?.role === 'Staff' ? 'My Next Actions' : user?.role === 'Manager' ? 'Team Next Actions' : 'Review Summary';
+  $('attentionList').innerHTML = attention.length ? attention.slice(0,8).map(({type,task:t})=>`<div class="task-row compact dashboard-task-jump" data-task-id="${escapeHtml(t.taskId)}"><div class="circle"></div><div><div class="task-title">${escapeHtml(t.taskDescription)}</div><div class="task-meta">${escapeHtml(type)} · ${escapeHtml(taskDisplayStatus(t))} · ${escapeHtml(taskAgeMeta(t))}</div></div><span class="badge ${cssToken(t.priority)}">${escapeHtml(t.priority)}</span>${revisionCount(t)?`<span class="badge revision-badge">Rev ${revisionCount(t)}</span>`:''}</div>`).join('') : emptyState(user?.role === 'Staff' ? 'No urgent next action. Your active tasks will appear here.' : 'No review, overdue, approval, or no-update action pending.');
 
   renderManagerStaffSummary(rows, user);
 
-  const auditActivity = (state.auditLogs || []).slice(0,6);
-  const taskActivity = rows.flatMap(t => (t.timeline || []).map(x=>({ ...x, taskId:t.taskId, taskDescription:t.taskDescription }))).sort((a,b)=>clean(b.date).localeCompare(clean(a.date))).slice(0,6);
-  if(auditActivity.length){
-    $('latestActivityList').innerHTML = auditActivity.map(a=>`<div class="task-row compact"><div class="circle"></div><div><div class="task-title">${escapeHtml(auditActionLabel(a.action || 'Activity'))}</div><div class="task-meta">${escapeHtml(a.time || '')} · ${escapeHtml(personName(a.by) || 'System')} · ${escapeHtml(a.target || '')}</div></div></div>`).join('');
-  } else {
-    $('latestActivityList').innerHTML = taskActivity.length ? taskActivity.map(a=>`<div class="task-row compact"><div class="circle"></div><div><div class="task-title">${escapeHtml(auditActionLabel(a.action || 'Updated'))}: ${escapeHtml(a.taskDescription)}</div><div class="task-meta">${escapeHtml(a.date || '')} · ${escapeHtml(personName(a.by) || 'System')} · ${escapeHtml(a.taskId || '')}</div></div></div>`).join('') : emptyState('No recent activity yet.');
-  }
+  const activityRows = rows.flatMap(t => (t.timeline || []).map(x=>({ ...x, taskId:t.taskId, taskDescription:t.taskDescription }))).sort((a,b)=>clean(b.date).localeCompare(clean(a.date))).slice(0,6);
+  $('latestActivityList').innerHTML = activityRows.length ? activityRows.map(a=>`<div class="task-row compact"><div class="circle"></div><div><div class="task-title">${escapeHtml(auditActionLabel(a.action || 'Updated'))}: ${escapeHtml(a.taskDescription)}</div><div class="task-meta">${escapeHtml(a.date || '')} · ${escapeHtml(personName(a.by))} · ${escapeHtml(a.taskId || '')}</div></div></div>`).join('') : emptyState('No recent task activity yet.');
 }
+
 function renderManagerStaffSummary(rows, user){
   const panel=$('managerSummaryPanel');
   const head=$('managerSummaryHead');
@@ -495,19 +609,53 @@ function renderManagerStaffSummary(rows, user){
   body.innerHTML = summary.length ? summary.map(x=>`<tr><td><b>${escapeHtml(x.label)}</b></td><td>${escapeHtml(x.staff)}</td><td>${x.rows.filter(isOpen).length}</td><td>${x.rows.filter(isOverdue).length}</td><td>${x.rows.filter(t=>['Ready for Check','Requested'].includes(t.status)).length}</td></tr>`).join('') : '<tr><td colspan="5">No team workload yet.</td></tr>';
 }
 
+function renderTaskTimeline(t){
+  const rows = (t.timeline || []).slice(0,8);
+  if(!rows.length) return `<div class="timeline-box"><h3>Activity Timeline</h3><div class="empty-state"><span>No timeline entries yet.</span></div></div>`;
+  return `<div class="timeline-box"><h3>Activity Timeline</h3>${rows.map(x=>`<div class="timeline-item"><b>${escapeHtml(auditActionLabel(x.action || 'Updated'))}</b><span>${escapeHtml(x.date || '')} · ${escapeHtml(personName(x.by))}${x.note ? ' · ' + escapeHtml(x.note) : ''}</span></div>`).join('')}</div>`;
+}
 function taskRow(t){ const rawStatus = isOverdue(t)?'Overdue':t.status; const label = rawStatus === 'Overdue' ? 'Overdue' : statusLabel(rawStatus); const edit = canEditTask(t) ? `<button class="pill edit-task dashboard-edit" data-task-id="${escapeHtml(t.taskId)}">Edit</button>` : ''; return `<div class="task-row"><div class="circle"></div><div><div class="task-title">${escapeHtml(t.taskDescription)}</div><div class="task-meta">${escapeHtml(personName(t.assignedTo))} • Due ${escapeHtml(t.dueDate || '-')}</div></div><span class="badge ${cssToken(t.priority)}">${escapeHtml(t.priority)}</span><span class="badge status ${statusClass(rawStatus)}">${escapeHtml(label)}</span>${edit}</div>`; }
 function canEditTask(t){ const user=currentUser(); if(!user || isDeleted(t)) return false; if(user.role==='Owner') return true; if(user.role==='Manager') return visiblePeopleCodes().includes(t.assignedTo); if(user.role==='Staff') return t.assignedTo===user.code && ['Requested','Pending','In Progress','Revision Required'].includes(t.status); return false; }
+function taskActionButtons(t, user){
+  const safeTaskId = escapeHtml(t.taskId);
+  const editBtn = canEditTask(t) ? `<button class="pill edit-task" data-task-id="${safeTaskId}">Open / Edit</button>` : '';
+  const ownerDelete = user.role==='Owner' ? (isDeleted(t) ? `<button class="pill restore-task" data-task-id="${safeTaskId}">Restore</button>` : `<button class="pill danger-task delete-task" data-task-id="${safeTaskId}">Delete</button>`) : '';
+  const quickReview = (user.role !== 'Staff' && t.status==='Ready for Check') ? `<button class="pill quick-complete" data-task-id="${safeTaskId}">Complete</button><button class="pill quick-correction" data-task-id="${safeTaskId}">Needs Correction</button>` : '';
+  return `${quickReview}${editBtn}${ownerDelete}`;
+}
+function renderTaskCards(rows, user){
+  const el=$('taskCardList'); if(!el) return;
+  if(!rows.length){ el.innerHTML = emptyState('No tasks match selected filters.'); return; }
+  el.innerHTML = rows.map(t=>{
+    const status = taskStatusRaw(t);
+    const safeLink=safeUrl(t.drawingLink);
+    const remarks = clean(t.staffRemarks || t.checkRemarks || '');
+    const rev = revisionCount(t);
+    return `<article class="task-card ${cssToken(t.priority)} ${isDeleted(t)?'soft-deleted':''}" data-task-id="${escapeHtml(t.taskId)}">
+      <div class="task-card-main">
+        <div>
+          <div class="task-card-title">${escapeHtml(t.taskDescription)}</div>
+          <div class="task-card-meta">${escapeHtml(personDisplay(t.assignedTo))} · Due ${escapeHtml(t.dueDate || '-')} · ${escapeHtml(taskAgeMeta(t))}</div>
+        </div>
+        <div class="task-card-badges"><span class="badge ${cssToken(t.priority)}">${escapeHtml(t.priority)}</span><span class="badge status ${statusClass(status)}">${escapeHtml(taskDisplayStatus(t))}</span>${rev?`<span class="badge revision-badge">Revision ${rev}</span>`:''}</div>
+      </div>
+      <div class="task-card-sub">${remarks ? escapeHtml(remarks) : 'No remarks yet.'}</div>
+      <div class="task-card-actions">${safeLink ? `<a class="pill link-pill" href="${escapeHtml(safeLink)}" target="_blank" rel="noopener noreferrer">Open File</a>` : ''}${taskActionButtons(t,user)}</div>
+    </article>`;
+  }).join('');
+}
 function renderTaskTable(){
   const rows = filteredTaskRows();
   const user = currentUser();
   const showActions = ['Owner','Manager','Staff'].includes(user?.role);
+  renderTaskCards(rows, user);
   const head = $('taskActionHead'); if(head) head.style.display = showActions ? 'table-cell' : 'none';
   $('taskTableBody').innerHTML = rows.length ? rows.map(t=>{
     const deleted=isDeleted(t); const safeLink=safeUrl(t.drawingLink); const link=safeLink ? `<a class="link-pill" href="${escapeHtml(safeLink)}" target="_blank" rel="noopener noreferrer">Open link</a>` : '-';
     const safeTaskId = escapeHtml(t.taskId);
-    const status = deleted ? 'Deleted' : isOverdue(t) ? 'Overdue' : t.status;
-    const actions = showActions ? `<td>${canEditTask(t)?`<button class="pill edit-task" data-task-id="${safeTaskId}">Edit</button>`:''}${user.role==='Owner'?` ${deleted?`<button class="pill restore-task" data-task-id="${safeTaskId}">Restore</button>`:`<button class="pill danger-task delete-task" data-task-id="${safeTaskId}">Delete</button>`}`:''}</td>` : '';
-    return `<tr class="${deleted?'soft-deleted':''}"><td><b>${safeTaskId}</b></td><td>${escapeHtml(t.taskDescription)}</td><td><b>${escapeHtml(personName(t.assignedTo))}</b><br><small>${escapeHtml(personMeta(t.assignedTo))}</small></td><td><span class="badge ${cssToken(t.priority)}">${escapeHtml(t.priority)}</span></td><td>${escapeHtml(t.dueDate || '-')}</td><td><span class="badge status ${statusClass(status)}">${escapeHtml(status === 'Overdue' || status === 'Deleted' ? status : statusLabel(status))}</span></td><td>${escapeHtml(t.staffRemarks || t.checkRemarks || '-')}</td><td>${link}</td>${actions}</tr>`;
+    const status = taskStatusRaw(t);
+    const actions = showActions ? `<td>${taskActionButtons(t,user)}</td>` : '';
+    return `<tr class="${deleted?'soft-deleted':''}"><td><b>${safeTaskId}</b></td><td>${escapeHtml(t.taskDescription)}${revisionCount(t)?`<br><small>Revision ${revisionCount(t)}</small>`:''}</td><td><b>${escapeHtml(personName(t.assignedTo))}</b><br><small>${escapeHtml(personMeta(t.assignedTo))}</small></td><td><span class="badge ${cssToken(t.priority)}">${escapeHtml(t.priority)}</span></td><td>${escapeHtml(t.dueDate || '-')}<br><small>${escapeHtml(taskAgeMeta(t))}</small></td><td><span class="badge status ${statusClass(status)}">${escapeHtml(taskDisplayStatus(t))}</span></td><td>${escapeHtml(t.staffRemarks || t.checkRemarks || '-')}</td><td>${link}</td>${actions}</tr>`;
   }).join('') : `<tr><td colspan="${showActions ? 9 : 8}">No tasks match selected filters.</td></tr>`;
 }
 function canStaffCancelOwnRequested(user, task){
@@ -536,7 +684,8 @@ function renderSelectedTaskDetail(){
   $('updateStatus').innerHTML = opts.length ? opts.map(x=>optionHtml(x, statusLabel(x))).join('') : '<option value="">No valid status</option>';
   if(!t){ $('selectedTaskDetail').innerHTML='<h2>Selected Task</h2><p>No eligible task selected.</p>'; return; }
   const reviewWarning = user.role !== 'Staff' ? '<div class="staff-capacity-note">Refresh before reviewing if this page has been open for a long time.</div>' : '';
-  $('selectedTaskDetail').innerHTML = `<h2>Selected Task</h2>${reviewWarning}${[['Task ID',t.taskId],['Description',t.taskDescription],['Assigned To', personDisplay(t.assignedTo)],['Priority',t.priority],['Due Date',t.dueDate],['Status',statusLabel(t.status)],['Staff Remarks',t.staffRemarks || '-'],['Check Remarks',t.checkRemarks || '-'],['Link',t.drawingLink || '-'],['History',t.historyNotes || '-']].map(([k,v])=>`<div class="detail-line"><b>${k}</b><span>${escapeHtml(v)}</span></div>`).join('')}`;
+  const timelineHtml = renderTaskTimeline(t);
+  $('selectedTaskDetail').innerHTML = `<h2>Selected Task</h2>${reviewWarning}${[['Task ID',t.taskId],['Description',t.taskDescription],['Assigned To', personDisplay(t.assignedTo)],['Priority',t.priority],['Due Date',t.dueDate],['Status',statusLabel(t.status)],['Revision Count', revisionCount(t) || '0'],['Task Age', taskAgeMeta(t)],['Staff Remarks',t.staffRemarks || '-'],['Check Remarks',t.checkRemarks || '-'],['Link',t.drawingLink || '-']].map(([k,v])=>`<div class="detail-line"><b>${k}</b><span>${escapeHtml(v)}</span></div>`).join('')}${timelineHtml}`;
 }
 function renderTeam(){
   const codes=visiblePeopleCodes(); const rows=people().filter(s=>codes.includes(s.code));
@@ -564,10 +713,10 @@ function showAdminTab(tab='people'){
   document.querySelectorAll('[data-admin-tab]').forEach(btn=>btn.classList.toggle('active', btn.dataset.adminTab===tab));
   const showConsole = tab==='console';
   const showSecurity = tab==='security';
-  const showPeople = tab==='people' || showConsole;
-  $('personForm')?.classList.toggle('admin-console-only', showConsole);
+  const showPeople = tab==='people';
   $('personForm')?.classList.toggle('hidden', !showPeople);
-  document.querySelector('.people-card')?.classList.toggle('hidden', !showPeople || showConsole);
+  document.querySelector('.people-card')?.classList.toggle('hidden', !showPeople);
+  $('adminConsolePanel')?.classList.toggle('hidden', !showConsole);
   $('loginSecurityPanel')?.classList.toggle('hidden', !showSecurity);
   renderLoginSecurity();
 }
@@ -644,12 +793,29 @@ async function deletePerson(code){
 }
 
 async function handleTaskDeleteActions(e){
+  const complete = e.target.closest('.quick-complete');
+  const correction = e.target.closest('.quick-correction');
+  if(complete){ await quickReviewTask(complete.dataset.taskId, 'Completed'); return; }
+  if(correction){ openTaskEdit(correction.dataset.taskId); setTimeout(()=>{ if($('sideStatus')) $('sideStatus').value='Revision Required'; if($('sideRemarks')) $('sideRemarks').focus(); }, 50); return; }
+  const jump = e.target.closest('.dashboard-task-jump');
+  if(jump){ openTaskEdit(jump.dataset.taskId); return; }
   const edit = e.target.closest('.edit-task');
   const restore = e.target.closest('.restore-task');
   const btn = e.target.closest('.delete-task');
   if(edit){ openTaskEdit(edit.dataset.taskId); return; }
   if(restore){ await restoreTask(restore.dataset.taskId); return; }
   if(btn){ await deleteTask(btn.dataset.taskId); return; }
+}
+
+async function quickReviewTask(taskId, newStatus){
+  const user=currentUser();
+  const t=state.tasks.find(x=>x.taskId===taskId);
+  if(!t || user?.role==='Staff' || t.status!=='Ready for Check'){ toast('Quick review is available only for tasks sent for review.'); return; }
+  try{
+    if(API_URL){ const payload = await apiPost({ action:'updateTask', taskId, newStatus, remarks:'Quick review action' }); master = payload.data || await fetchBootstrap(); state = JSON.parse(JSON.stringify(master)); }
+    else { applyLocalTaskStatus(user, t, newStatus, 'Quick review action'); saveState(); }
+    renderAll(); toast(`Task ${taskId} updated to ${statusLabel(newStatus)}.`);
+  }catch(err){ showError(err); }
 }
 
 async function restoreTask(taskId){
@@ -687,7 +853,7 @@ function openTaskEdit(taskId){
   const statusOptions = statusOptionsForTask(user, t);
   $('sideStatus').innerHTML = statusOptions.length ? ['<option value="">Keep current</option>', ...statusOptions.map(x=>optionHtml(x, statusLabel(x)))].join('') : '<option value="">No status action</option>';
   $('sideStatusLine').innerHTML = `<span class="badge status ${statusClass(t.status)}">${escapeHtml(statusLabel(t.status))}</span>`;
-  $('sideTaskMeta').innerHTML = [['Assigned', personDisplay(t.assignedTo)], ['Priority', t.priority], ['Due', t.dueDate || '-'], ['Last Updated', t.lastUpdated || '-']].map(([k,v])=>`<div class="detail-line"><b>${k}</b><span>${escapeHtml(v)}</span></div>`).join('');
+  $('sideTaskMeta').innerHTML = [['Assigned', personDisplay(t.assignedTo)], ['Priority', t.priority], ['Due', t.dueDate || '-'], ['Status', statusLabel(t.status)], ['Revision Count', revisionCount(t) || '0'], ['Age', taskAgeMeta(t)]].map(([k,v])=>`<div class="detail-line"><b>${k}</b><span>${escapeHtml(v)}</span></div>`).join('') + renderTaskTimeline(t);
   $('sideMarkCompleted').style.display = (user.role !== 'Staff' && t.status==='Ready for Check') ? '' : 'none';
   $('sideNeedsCorrection').style.display = (user.role !== 'Staff' && t.status==='Ready for Check') ? '' : 'none';
   panel.classList.remove('hidden');
@@ -711,6 +877,7 @@ async function submitTaskSideForm(e){
   if(!t || !canEditTask(t)){ formBusy(e, false); toast('Task action not allowed'); return; }
   const remarks=clean($('sideRemarks').value);
   const newStatus=$('sideStatus').value;
+  if(newStatus==='Revision Required' && !remarks){ formBusy(e, false); toast('Correction remarks are required.'); return; }
   try{
     const changed = clean($('sideDescription').value)!==clean(t.taskDescription) || $('sideAssignee').value!==t.assignedTo || $('sidePriority').value!==t.priority || $('sideDueDate').value!==t.dueDate || clean($('sideLink').value)!==clean(t.drawingLink);
     if(changed){
@@ -739,6 +906,7 @@ function applyLocalTaskStatus(user, t, newStatus, remarks){
     if(user.role==='Manager' && !visiblePeopleCodes().includes(t.assignedTo)) throw new Error('Manager cannot review outside team');
     if(t.status==='Requested' && !['Pending','Cancelled'].includes(newStatus)) throw new Error('Requested tasks can only be approved to Pending or Cancelled.');
     if(t.status!=='Requested' && (t.status!=='Ready for Check' || !['Completed','Revision Required'].includes(newStatus))) throw new Error('Invalid review action');
+    if(newStatus==='Revision Required' && !remarks) throw new Error('Correction remarks are required.');
     t.checkRemarks=remarks; t.checkedBy=user.code; if(newStatus==='Completed') t.completedDate=todayISO(); addTimeline(t,newStatus,remarks); addAudit(t.status==='Requested'?'TASK_REQUEST_REVIEWED':'TASK_REVIEWED', t.taskId, `${newStatus} by ${user.role}`);
   }
   t.status=newStatus; t.lastUpdated=todayISO(); t.updateCount=(Number(t.updateCount)||0)+1; t.historyNotes = `${t.historyNotes || ''}\n${todayISO()} ${newStatus} by ${user.code}: ${remarks}`;

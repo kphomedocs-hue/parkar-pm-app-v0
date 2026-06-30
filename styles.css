@@ -353,23 +353,18 @@ select:focus-visible,input:focus-visible,textarea:focus-visible,button:focus-vis
   }
 }
 
-/* v2.6.1 alignment QA patch */
+/* v2.6.1 final sidebar/admin alignment — consolidated, no conflicting overrides */
 .sidebar{
+  display:flex!important;
+  flex-direction:column;
   min-height:calc(100vh - 52px);
-}
-.sidebar-logout-bottom{
-  margin-top:auto;
-  position:relative;
-  z-index:2;
-  width:100%;
-}
-.compact-logout{
-  width:100%;
-  justify-content:center;
-  text-align:center;
 }
 .sidebar-brand{
   min-height:168px;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  text-align:center;
 }
 .sidebar-user{
   width:100%;
@@ -378,6 +373,23 @@ select:focus-visible,input:focus-visible,textarea:focus-visible,button:focus-vis
 .sidebar-user b,
 .sidebar-user span{
   overflow-wrap:anywhere;
+}
+.sidebar nav{
+  flex:0 0 auto;
+}
+.sidebar-logout-bottom{
+  margin-top:16px!important;
+  width:auto!important;
+  align-self:flex-start!important;
+  position:relative;
+  z-index:2;
+}
+.compact-logout{
+  display:inline-flex!important;
+  width:auto!important;
+  min-width:112px;
+  justify-content:center;
+  text-align:center;
 }
 .admin-tabs{
   display:flex!important;
@@ -409,13 +421,15 @@ select:focus-visible,input:focus-visible,textarea:focus-visible,button:focus-vis
 }
 @media(max-width:1100px){
   .sidebar{
-    min-height:auto;
+    display:block!important;
+    min-height:auto!important;
   }
   .sidebar-logout-bottom{
-    margin-top:14px;
+    margin-top:12px!important;
+    align-self:auto!important;
   }
   .compact-logout{
-    width:auto;
+    width:auto!important;
   }
 }
 @media(max-width:760px){
@@ -427,74 +441,3 @@ select:focus-visible,input:focus-visible,textarea:focus-visible,button:focus-vis
   }
 }
 
-
-/* v2.6.1 sidebar structure fix: stable logo/user/nav/logout alignment */
-@media(min-width:1101px){
-  .sidebar{
-    display:grid!important;
-    grid-template-rows:auto auto auto 1fr;
-    align-content:start;
-    min-height:calc(100vh - 52px);
-  }
-  .sidebar-brand{grid-row:1;}
-  .sidebar-user{grid-row:2;}
-  .sidebar nav{grid-row:3;align-self:start;}
-  .sidebar-logout-bottom{
-    grid-row:4;
-    align-self:end;
-    margin-top:24px!important;
-    width:100%;
-    position:relative;
-    z-index:2;
-  }
-  .compact-logout{
-    display:block;
-    width:100%;
-    text-align:center;
-  }
-}
-@media(max-width:1100px){
-  .sidebar{
-    display:block!important;
-    min-height:auto!important;
-  }
-  .sidebar-logout-bottom{
-    margin-top:14px!important;
-    width:auto;
-  }
-  .compact-logout{
-    width:auto;
-  }
-}
-
-
-/* v2.6.1 logout correction: keep Logout as compact sidebar action, not a stretched nav row */
-.sidebar{
-  display:flex!important;
-  flex-direction:column;
-}
-.sidebar nav{
-  flex:0 0 auto;
-}
-.sidebar-logout-bottom{
-  margin-top:16px!important;
-  width:auto!important;
-  align-self:flex-start!important;
-  position:relative;
-  z-index:2;
-}
-.compact-logout{
-  display:inline-flex!important;
-  width:auto!important;
-  min-width:112px;
-  justify-content:center;
-  text-align:center;
-}
-@media(max-width:1100px){
-  .sidebar{
-    display:block!important;
-  }
-  .sidebar-logout-bottom{
-    margin-top:12px!important;
-  }
-}

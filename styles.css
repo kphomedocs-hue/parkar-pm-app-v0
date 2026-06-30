@@ -441,3 +441,63 @@ select:focus-visible,input:focus-visible,textarea:focus-visible,button:focus-vis
   }
 }
 
+
+
+/* v2.6.1 final UX recheck: remove live banner, fix admin console overlap, show login progress */
+.api-mode-banner{
+  display:none!important;
+}
+.login-status{
+  min-height:20px;
+  color:var(--brand-bronze);
+  font-size:13px;
+  font-weight:850;
+  text-align:center;
+}
+#loginSubmitBtn:disabled,
+button[data-busy="1"]{
+  opacity:.72;
+  cursor:progress;
+}
+.admin-console-card{
+  display:grid;
+  gap:12px;
+}
+.admin-console-grid{
+  display:grid!important;
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  gap:12px!important;
+  align-items:end!important;
+}
+.admin-console-grid label{
+  grid-column:1 / -1;
+  min-width:0!important;
+  margin:0!important;
+}
+.admin-console-grid label select{
+  width:100%;
+}
+.admin-console-grid .ghost-btn{
+  width:100%;
+  min-width:0!important;
+  text-align:center;
+  justify-content:center;
+  white-space:nowrap;
+}
+.admin-refresh-status{
+  margin:0!important;
+  width:100%;
+  white-space:normal!important;
+  display:block;
+  position:relative;
+  z-index:1;
+}
+@media(max-width:640px){
+  .admin-console-grid{
+    grid-template-columns:1fr!important;
+  }
+  .admin-console-grid label,
+  .admin-console-grid .ghost-btn{
+    grid-column:1;
+  }
+}

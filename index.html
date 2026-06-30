@@ -20,7 +20,8 @@
       <form id="loginForm" class="form-card">
         <label>Email or Staff Code<input id="loginEmail" autocomplete="username" placeholder="Email or S001" required /></label>
         <label>PIN<input id="loginPin" type="password" inputmode="numeric" autocomplete="current-password" placeholder="Enter PIN" required /></label>
-        <button class="primary-btn" type="submit">Login</button>
+        <button class="primary-btn" type="submit" id="loginSubmitBtn">Login</button>
+        <div id="loginStatus" class="login-status" aria-live="polite"></div>
       </form>
     </div>
   </section>
@@ -178,7 +179,7 @@
             <label>Role<select id="personRole"></select></label>
             <label>Email<input id="personEmail" type="email" placeholder="email@domain.com" /></label>
             <label>PIN<input id="personPin" inputmode="numeric" placeholder="Set / reset PIN" /><small>Required for new person. Leave blank while editing to keep existing PIN.</small></label>
-            <label>Reporting Manager<select id="personManager"></select></label>
+            <label>Reporting Head<select id="personManager"></select></label>
             <label>Active Status<select id="personActive"><option>Yes</option><option>No</option></select></label>
             <button class="primary-btn" type="submit">Save Person</button>
             <button class="ghost-btn" id="clearPersonFormBtn" type="button">Clear</button>

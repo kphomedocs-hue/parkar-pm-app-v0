@@ -1,10 +1,10 @@
 const DATA_URL = 'data.json';
 // GitHub Pages frontend connects to Google Apps Script through this URL.
-// After deploying Apps Script as Web App, paste the Web App URL here. Keep blank only for local UI preview.
+// After deploying Apps Script as Web App, paste the Web App URL here.
 const API_URL = 'https://script.google.com/macros/s/AKfycbw053iaPX4-N72d2HGhx7W8ES3IB1qTMvKvx5o8GUT1D_vMYnZPF0zOq1yk1yLQuZjS/exec';
-const APP_VERSION = '2.6.1-final-safety-fixed';
-const STORAGE_KEY = 'parkar-task-app-v2-6-1-deployment-preview';
-const SESSION_KEY = 'parkar-session-v2-6-1-secure';
+const APP_VERSION = '2.7.9-full-code-architecture-checked';
+const STORAGE_KEY = 'parkar-task-app-v2-7-9-full-code-architecture-checked';
+const SESSION_KEY = 'parkar-session-v2-7-9-secure';
 const REFRESH_MODE_KEY = 'parkar-refresh-mode-v1';
 const FOUR_HOUR_MS = 4 * 60 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 25000;
@@ -17,6 +17,7 @@ let lastRefreshAt = null;
 let sessionUserCode = null;
 let sessionToken = null;
 let sessionUser = null;
+let selectedDetailEditingTaskId = null;
 
 const $ = (id) => document.getElementById(id);
 const clean = (txt='') => String(txt ?? '').trim();
@@ -170,8 +171,8 @@ function assertAdminArchitectureHardRule(){
 }
 
 function assertPeopleMetadataHardRule(){
-  const sampleOwner = {code:'O001', role:'Owner', email:'owner@example.com', active:'Yes'};
-  const ownerMeta = peopleRowMeta(sampleOwner);
+  const fallbackOwner = {code:'O001', role:'Owner', email:'owner@example.com', active:'Yes'};
+  const ownerMeta = peopleRowMeta(fallbackOwner);
   if(ownerMeta.includes('Manager' + ':') || ownerMeta.includes('Reporting Head:')){
     throw new Error('People metadata hard rule failed for Owner row.');
   }
@@ -191,7 +192,7 @@ function reportingHeadLabel(code){
 }
 function personHasTaskHistory(code){ return state.tasks.some(t => [t.assignedTo, t.createdBy, t.checkedBy, t.managerCode].includes(code)); }
 function currentUser(){ return personByCode(sessionUserCode) || sessionUser || people()[0]; }
-function activePeople(){ return people().filter(p => String(p.active || 'Yes').toLowerCase() !== 'no'); }
+function activePeople(){ return people().filter(p => String(p.active || 'Yes').toLowerCase() !== 'no' && String(p.deleted || 'No').toLowerCase() !== 'yes'); }
 function activeByRole(role){ return activePeople().filter(p => p.role === role); }
 function nowStamp(){ return new Date().toLocaleString('en-IN', {year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit'}); }
 function auditCategory(action=''){
@@ -235,7 +236,7 @@ function applyQuick(rows, quick){
   if(quick === 'Deleted / Archive') return visibleTasks(true).filter(t=>isDeleted(t) || t.archived==='Yes');
   if(quick === 'No Update 3 Days') return rows.filter(noUpdate3Days);
   if(quick === 'Overdue') return rows.filter(isOverdue);
-  if(quick === 'Due Next 7 Days') { const d = addDays(7); return rows.filter(t => isOpen(t) && t.dueDate <= d); }
+  if(quick === 'Due Next 7 Days') { const d = addDays(7); return rows.filter(t => isOpen(t) && t.dueDate && t.dueDate <= d); }
   return rows.filter(t=>t.status===quick);
 }
 function sortedRows(rows, sort){
@@ -337,6 +338,17 @@ function setLoginWorking(isWorking, message=''){
   if(statusEl) statusEl.textContent = message || '';
   if(submitBtn) setButtonBusy(submitBtn, !!isWorking, 'Logging in...');
 }
+function togglePasswordVisibility(e){
+  const btn = e.currentTarget;
+  const targetId = btn?.dataset?.togglePassword;
+  const input = targetId ? $(targetId) : null;
+  if(!input) return;
+  const showing = input.type === 'text';
+  input.type = showing ? 'password' : 'text';
+  btn.textContent = showing ? 'Show' : 'Hide';
+  btn.setAttribute('aria-label', showing ? 'Show PIN' : 'Hide PIN');
+  input.focus();
+}
 function formBusy(e, busy, busyText='Saving...'){
   const form = e?.target; if(!form) return false;
   if(busy && form.dataset.busy === '1') return true;
@@ -398,9 +410,13 @@ function refreshStatusText(){
   updateApiBanner();
 }
 function updateApiBanner(){
-  const banner = $('apiModeBanner'); if(!banner) return;
+  const banner = $('apiModeBanner');
+  if(!banner) return;
+  // The connection banner is intentionally hidden in the live app.
+  // Connection problems are shown only as direct error messages/toasts when an action fails.
   banner.textContent = '';
   banner.className = 'api-mode-banner hidden';
+  banner.setAttribute('aria-hidden', 'true');
 }
 function setupRefreshTimer(){
   if(refreshTimer) clearInterval(refreshTimer); refreshTimer = null;
@@ -409,16 +425,20 @@ function setupRefreshTimer(){
   refreshStatusText();
 }
 async function refreshFromBackend(source='manual'){
-  try{ master = await fetchBootstrap(); state = API_URL ? JSON.parse(JSON.stringify(master)) : loadState(master); migrateDemoState(); lastRefreshAt = new Date(); renderAll(); refreshStatusText(); if(source === 'manual') toast(API_URL ? 'Data refreshed' : 'Preview data refreshed'); }
+  try{ master = await fetchBootstrap(); state = API_URL ? JSON.parse(JSON.stringify(master)) : loadState(master); migrateDemoState(); lastRefreshAt = new Date(); renderAll(); refreshStatusText(); if(source === 'manual') toast('Data refreshed'); }
   catch(err){ if(!err?.sessionHandled) toast('Refresh failed: ' + err.message); }
 }
 
 function bindEvents(){
   $('loginForm').addEventListener('submit', attemptLogin);
   $('logoutBtn').addEventListener('click', logout);
+  document.querySelectorAll('[data-toggle-password]').forEach(btn=>btn.addEventListener('click', togglePasswordVisibility));
   $('changePinBtn')?.addEventListener('click',()=>openPinChangeModal(false));
   $('systemStatusBtn')?.addEventListener('click',runSystemStatusCheck);
-  document.querySelectorAll('.nav-item').forEach(btn=>btn.addEventListener('click',()=>showView(btn.dataset.view)));
+  document.querySelectorAll('.nav-item').forEach(btn=>btn.addEventListener('click',()=>{
+    if(btn.dataset.view === 'admin') showAdminTab('people');
+    else showView(btn.dataset.view);
+  }));
   document.querySelectorAll('[data-view-target]').forEach(btn=>btn.addEventListener('click',()=>showView(btn.dataset.viewTarget)));
   $('globalSearch').addEventListener('input',renderAll);
   ['filterQuick','filterPriority','filterStaff','sortBy'].forEach(id=>$(id).addEventListener('change',renderTaskTable));
@@ -426,7 +446,9 @@ function bindEvents(){
   $('refreshMode').value = storageGet(REFRESH_MODE_KEY) || 'manual'; $('refreshMode').addEventListener('change',setupRefreshTimer);
   $('addTaskForm').addEventListener('submit',submitNewTask);
   $('updateForm').addEventListener('submit',submitUpdate);
-  $('updateTaskId').addEventListener('change',renderSelectedTaskDetail);
+  $('updateTaskId').addEventListener('change',()=>{ selectedDetailEditingTaskId = null; renderSelectedTaskDetail(); });
+  document.addEventListener('click', handleSelectedTaskDetailActions);
+  document.addEventListener('submit', handleSelectedTaskDetailSubmit);
   $('taskSideForm')?.addEventListener('submit', submitTaskSideForm);
   $('closeTaskSidePanel')?.addEventListener('click', closeTaskSidePanel);
   $('sideNeedsCorrection')?.addEventListener('click', () => quickSideStatus('Revision Required'));
@@ -441,10 +463,10 @@ function bindEvents(){
   $('editTaskForm')?.addEventListener('submit', submitTaskEdit);
   $('cancelEditTask')?.addEventListener('click',()=>$('taskEditModal').classList.add('hidden'));
   $('closeSystemStatus')?.addEventListener('click',()=>$('systemStatusModal').classList.add('hidden'));
-  $('exportTasksBtn')?.addEventListener('click',(e)=>exportCsv('tasks', e.currentTarget));
-  $('exportPeopleBtn')?.addEventListener('click',(e)=>exportCsv('people', e.currentTarget));
-  $('exportAuditBtn')?.addEventListener('click',(e)=>exportCsv('audit', e.currentTarget));
-  $('exportFullBackupBtn')?.addEventListener('click',(e)=>exportFullBackup(e.currentTarget));
+  $('exportTasksBtn')?.addEventListener('click',(e)=>exportPdfBackup('tasks', e.currentTarget));
+  $('exportPeopleBtn')?.addEventListener('click',(e)=>exportPdfBackup('people', e.currentTarget));
+  $('exportAuditBtn')?.addEventListener('click',(e)=>exportPdfBackup('audit', e.currentTarget));
+  $('exportFullBackupBtn')?.addEventListener('click',(e)=>exportPdfBackup('full', e.currentTarget));
   ['auditCategoryFilter','auditActionFilter','auditUserFilter','auditDateFrom','auditDateTo','auditSearch'].forEach(id=>$(id)?.addEventListener('input', renderAudit));
   $('archiveCompletedBtn')?.addEventListener('click',archiveCompletedTasks);
 }
@@ -458,6 +480,9 @@ function initDynamicControls(){
 }
 function optionHtml(value, label=value){ return `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`; }
 function fillSelect(id, items, selected){ const el=$(id); if(!el) return; el.innerHTML = items.map(x=>optionHtml(x, optionDisplayLabel(x))).join(''); if(selected) el.value = selected; }
+function setAdminTabActive(tab){
+  document.querySelectorAll('[data-admin-tab]').forEach(btn=>btn.classList.toggle('active', btn.dataset.adminTab===tab));
+}
 function showView(view){
   const previousView = currentView;
   currentView=view;
@@ -469,8 +494,15 @@ function showView(view){
     const group = ['add','update'].includes(view) ? 'tasks' : ['admin','audit'].includes(view) ? 'admin' : view;
     b.classList.toggle('active', b.dataset.view===group);
   });
-  const titles={dashboard:'Dashboard',tasks:'Tasks',add:'Tasks',update:'Tasks',team:'Team',admin:'Admin',audit:'Admin'};
+  const titles={dashboard:'Dashboard',tasks:'All Tasks',add:'Add Task',update:'Update / Review',team:'Team',admin:'Admin',audit:'Audit & Backup'};
   $('pageTitle').textContent=titles[currentView] || 'Dashboard';
+  if(currentView === 'audit') setAdminTabActive('audit');
+  if(currentView === 'admin' && previousView !== 'admin'){
+    setAdminTabActive('people');
+    $('adminPeoplePane')?.classList.remove('hidden');
+    $('adminConsolePane')?.classList.add('hidden');
+    $('adminSecurityPane')?.classList.add('hidden');
+  }
   if(previousView === 'tasks' && currentView !== 'tasks') closeTaskSidePanel();
   renderAll();
 }
@@ -574,15 +606,15 @@ function renderDashboard(){
     $('kpiCompletedCard').querySelector('p').textContent='Completed This Month';
     $('kpiCompletedCard').querySelector('span').textContent='Monthly output';
   } else {
-    $('kpiOpenLabel').textContent = 'Waiting Review';
+    $('kpiOpenLabel').textContent = 'Open Tasks';
     $('kpiOverdueLabel').textContent = 'Overdue';
-    $('kpiApprovalLabel').textContent = 'Waiting Approval';
-    $('kpiOpen').textContent=b.reviewRows.length;
+    $('kpiApprovalLabel').textContent = 'Waiting Review';
+    $('kpiOpen').textContent=b.openRows.length;
     $('kpiOverdue').textContent=b.overdueRows.length;
-    $('kpiApproval').textContent=b.requestedRows.length;
-    $('kpiCompleted').textContent=b.noUpdateRows.length;
-    $('kpiCompletedCard').querySelector('p').textContent='No Update 3 Days';
-    $('kpiCompletedCard').querySelector('span').textContent='Follow-up required';
+    $('kpiApproval').textContent=b.reviewRows.length;
+    $('kpiCompleted').textContent=completedMonthRows.length;
+    $('kpiCompletedCard').querySelector('p').textContent='Completed This Month';
+    $('kpiCompletedCard').querySelector('span').textContent='Monthly output';
   }
 
   const attention = user?.role === 'Staff'
@@ -605,8 +637,11 @@ function renderDashboard(){
           ...b.noUpdateRows.map(t=>({type:'No Update', task:t}))
         ];
 
+  const attentionUnique = [];
+  const seenAttention = new Set();
+  attention.forEach(item=>{ if(!seenAttention.has(item.task.taskId)){ seenAttention.add(item.task.taskId); attentionUnique.push(item); } });
   $('attentionTitle').textContent = user?.role === 'Staff' ? 'My Next Actions' : user?.role === 'Manager' ? 'Team Next Actions' : 'Review Summary';
-  $('attentionList').innerHTML = attention.length ? attention.slice(0,8).map(({type,task:t})=>`<div class="task-row compact dashboard-task-jump" data-task-id="${escapeHtml(t.taskId)}"><div class="circle"></div><div><div class="task-title">${escapeHtml(t.taskDescription)}</div><div class="task-meta">${escapeHtml(type)} · ${escapeHtml(taskDisplayStatus(t))} · ${escapeHtml(taskAgeMeta(t))}</div></div><span class="badge ${cssToken(t.priority)}">${escapeHtml(t.priority)}</span>${revisionCount(t)?`<span class="badge revision-badge">Rev ${revisionCount(t)}</span>`:''}</div>`).join('') : emptyState(user?.role === 'Staff' ? 'No urgent next action. Your active tasks will appear here.' : 'No review, overdue, approval, or no-update action pending.');
+  $('attentionList').innerHTML = attentionUnique.length ? attentionUnique.slice(0,8).map(({type,task:t})=>`<div class="task-row compact dashboard-task-jump" data-task-id="${escapeHtml(t.taskId)}"><div class="circle"></div><div><div class="task-title">${escapeHtml(t.taskDescription)}</div><div class="task-meta">${escapeHtml(type)} · ${escapeHtml(taskDisplayStatus(t))} · ${escapeHtml(taskAgeMeta(t))}</div></div><span class="badge ${cssToken(t.priority)}">${escapeHtml(t.priority)}</span>${revisionCount(t)?`<span class="badge revision-badge">Rev ${revisionCount(t)}</span>`:''}</div>`).join('') : emptyState(user?.role === 'Staff' ? 'No urgent next action. Your active tasks will appear here.' : 'No review, overdue, approval, or no-update action pending.');
 
   renderManagerStaffSummary(rows, user);
 
@@ -657,7 +692,19 @@ function renderTaskTimeline(t){
   return `<div class="timeline-box"><h3>Activity Timeline</h3>${rows.map(x=>`<div class="timeline-item"><b>${escapeHtml(auditActionLabel(x.action || 'Updated'))}</b><span>${escapeHtml(x.date || '')} · ${escapeHtml(personName(x.by))}${x.note ? ' · ' + escapeHtml(x.note) : ''}</span></div>`).join('')}</div>`;
 }
 function taskRow(t){ const rawStatus = isOverdue(t)?'Overdue':t.status; const label = rawStatus === 'Overdue' ? 'Overdue' : statusLabel(rawStatus); const edit = canEditTask(t) ? `<button class="pill edit-task dashboard-edit" data-task-id="${escapeHtml(t.taskId)}">Edit</button>` : ''; return `<div class="task-row"><div class="circle"></div><div><div class="task-title">${escapeHtml(t.taskDescription)}</div><div class="task-meta">${escapeHtml(personName(t.assignedTo))} • Due ${escapeHtml(t.dueDate || '-')}</div></div><span class="badge ${cssToken(t.priority)}">${escapeHtml(t.priority)}</span><span class="badge status ${statusClass(rawStatus)}">${escapeHtml(label)}</span>${edit}</div>`; }
-function canEditTask(t){ const user=currentUser(); if(!user || isDeleted(t)) return false; if(user.role==='Owner') return true; if(user.role==='Manager') return visiblePeopleCodes().includes(t.assignedTo); if(user.role==='Staff') return t.assignedTo===user.code && ['Requested','Pending','In Progress','Revision Required'].includes(t.status); return false; }
+function canEditTask(t){ const user=currentUser(); if(!user || isDeleted(t)) return false; if(user.role==='Owner') return true; if(user.role==='Manager') return visiblePeopleCodes().includes(t.assignedTo); if(user.role==='Staff') return t.assignedTo===user.code && t.createdBy===user.code && ['Pending','In Progress','Revision Required'].includes(t.status); return false; }
+function assignablePeopleForUser(user=currentUser()){
+  if(!user) return [];
+  if(user.role==='Owner') return activePeople();
+  if(user.role==='Manager') return activePeople().filter(p=>p.code===user.code || p.managerCode===user.code);
+  return [user];
+}
+function managerCodeForAssignee(code, fallback=currentUser()?.code || ''){
+  const p=personByCode(code);
+  if(!p) return fallback;
+  if(p.role==='Owner' || p.role==='Manager') return p.code;
+  return p.managerCode || fallback;
+}
 function taskActionButtons(t, user){
   const safeTaskId = escapeHtml(t.taskId);
   const editBtn = canEditTask(t) ? `<button class="pill edit-task" data-task-id="${safeTaskId}">Open / Edit</button>` : '';
@@ -676,8 +723,9 @@ function renderTaskCards(rows, user){
     return `<article class="task-card ${cssToken(t.priority)} ${isDeleted(t)?'soft-deleted':''}" data-task-id="${escapeHtml(t.taskId)}">
       <div class="task-card-main">
         <div>
+          <div class="task-card-kicker"><span class="task-id-chip">${escapeHtml(t.taskId)}</span><span>${escapeHtml(personDisplay(t.assignedTo))}</span></div>
           <div class="task-card-title">${escapeHtml(t.taskDescription)}</div>
-          <div class="task-card-meta">${escapeHtml(personDisplay(t.assignedTo))} · Due ${escapeHtml(t.dueDate || '-')} · ${escapeHtml(taskAgeMeta(t))}</div>
+          <div class="task-card-meta meta-chip-list"><span>Due ${escapeHtml(t.dueDate || '-')}</span><span>Assigned ${escapeHtml(daysAgoText(t.dateAssigned))}</span><span>Updated ${escapeHtml(daysAgoText(t.lastUpdated))}</span></div>
         </div>
         <div class="task-card-badges"><span class="badge ${cssToken(t.priority)}">${escapeHtml(t.priority)}</span><span class="badge status ${statusClass(status)}">${escapeHtml(taskDisplayStatus(t))}</span>${rev?`<span class="badge revision-badge">Revision ${rev}</span>`:''}</div>
       </div>
@@ -724,11 +772,70 @@ function renderSelectedTaskDetail(){
   const id=$('updateTaskId').value; const t=state.tasks.find(x=>x.taskId===id); const user=currentUser();
   const opts = t ? statusOptionsForTask(user, t) : [];
   $('updateStatus').innerHTML = opts.length ? opts.map(x=>optionHtml(x, statusLabel(x))).join('') : '<option value="">No valid status</option>';
-  if(!t){ $('selectedTaskDetail').innerHTML='<h2>Selected Task</h2><p>No eligible task selected.</p>'; return; }
+  if(!t){ selectedDetailEditingTaskId=null; $('selectedTaskDetail').innerHTML='<h2>Selected Task</h2><p>No eligible task selected.</p>'; return; }
+  if(selectedDetailEditingTaskId && selectedDetailEditingTaskId !== t.taskId) selectedDetailEditingTaskId = null;
+  if(selectedDetailEditingTaskId === t.taskId){ renderSelectedTaskEditForm(t, user); return; }
   const reviewWarning = user.role !== 'Staff' ? '<div class="staff-capacity-note">Refresh before reviewing if this page has been open for a long time.</div>' : '';
   const timelineHtml = renderTaskTimeline(t);
-  $('selectedTaskDetail').innerHTML = `<h2>Selected Task</h2>${reviewWarning}${[['Task ID',t.taskId],['Description',t.taskDescription],['Assigned To', personDisplay(t.assignedTo)],['Priority',t.priority],['Due Date',t.dueDate],['Status',statusLabel(t.status)],['Revision Count', revisionCount(t) || '0'],['Task Age', taskAgeMeta(t)],['Staff Remarks',t.staffRemarks || '-'],['Check Remarks',t.checkRemarks || '-'],['Link',t.drawingLink || '-']].map(([k,v])=>`<div class="detail-line"><b>${k}</b><span>${escapeHtml(v)}</span></div>`).join('')}${timelineHtml}`;
+  const editButton = canEditTask(t) ? `<button class="pill selected-detail-edit" data-task-id="${escapeHtml(t.taskId)}" type="button">Edit Task</button>` : '';
+  const linkValue = t.drawingLink ? `<a class="link-pill" href="${escapeHtml(safeUrl(t.drawingLink))}" target="_blank" rel="noopener">Open link</a><br><small>${escapeHtml(t.drawingLink)}</small>` : '-';
+  $('selectedTaskDetail').innerHTML = `<div class="selected-task-head"><div><h2>Selected Task</h2>${reviewWarning}</div><div class="detail-actions">${editButton}</div></div>${[['Task ID',t.taskId],['Description',t.taskDescription],['Assigned To', personDisplay(t.assignedTo)],['Priority',t.priority],['Due Date',t.dueDate],['Status',statusLabel(t.status)],['Revision Count', revisionCount(t) || '0'],['Task Age', taskAgeMeta(t)],['Staff Remarks',t.staffRemarks || '-'],['Check Remarks',t.checkRemarks || '-']].map(([k,v])=>`<div class="detail-line"><b>${k}</b><span>${escapeHtml(v)}</span></div>`).join('')}<div class="detail-line"><b>Link</b><span>${linkValue}</span></div>${timelineHtml}`;
 }
+function renderSelectedTaskEditForm(t, user=currentUser()){
+  const allowed = assignablePeopleForUser(user);
+  const assigneeOptions = allowed.map(p=>optionHtml(p.code, `${p.name} (${p.role} · ${p.code})`)).join('');
+  const priorityOptions = state.config.priorities.map(p=>optionHtml(p, p)).join('');
+  const protectedMeta = [['Status',statusLabel(t.status)],['Revision Count', revisionCount(t) || '0'],['Task Age', taskAgeMeta(t)]].map(([k,v])=>`<div class="detail-line"><b>${k}</b><span>${escapeHtml(v)}</span></div>`).join('');
+  $('selectedTaskDetail').innerHTML = `<div class="selected-task-head"><div><h2>Edit Selected Task</h2><p>Safe task fields are editable here. Status review stays in the left form.</p></div><div class="detail-actions"><button class="pill selected-detail-cancel" type="button">Cancel</button></div></div>
+    <form id="selectedTaskEditForm" class="form-card selected-edit-form">
+      <input type="hidden" id="selectedEditTaskId" value="${escapeHtml(t.taskId)}" />
+      <label>Task ID<input id="selectedEditTaskIdView" value="${escapeHtml(t.taskId)}" readonly /></label>
+      <label>Description<textarea id="selectedEditDescription" required>${escapeHtml(t.taskDescription || '')}</textarea></label>
+      <div class="side-form-grid">
+        <label>Assign To<select id="selectedEditAssignee">${assigneeOptions}</select></label>
+        <label>Priority<select id="selectedEditPriority">${priorityOptions}</select></label>
+      </div>
+      <div class="side-form-grid">
+        <label>Due Date<input id="selectedEditDueDate" type="date" value="${escapeHtml(t.dueDate || '')}" /></label>
+        <label>File / Drawing Link<input id="selectedEditLink" value="${escapeHtml(t.drawingLink || '')}" placeholder="Google Drive / drawing link" /></label>
+      </div>
+      <label>Reason / edit note<textarea id="selectedEditNote" placeholder="Why is this being changed?"></textarea></label>
+      <div class="selected-edit-protected"><h3>Locked / review fields</h3>${protectedMeta}</div>
+      <div class="side-actions"><button class="primary-btn" type="submit">Save Changes</button><button class="ghost-btn selected-detail-cancel" type="button">Cancel</button></div>
+    </form>${renderTaskTimeline(t)}`;
+  $('selectedEditAssignee').value = t.assignedTo;
+  $('selectedEditPriority').value = t.priority;
+}
+function handleSelectedTaskDetailActions(e){
+  const edit = e.target.closest('.selected-detail-edit');
+  if(edit){ selectedDetailEditingTaskId = edit.dataset.taskId; renderSelectedTaskDetail(); return; }
+  const cancel = e.target.closest('.selected-detail-cancel');
+  if(cancel){ selectedDetailEditingTaskId = null; renderSelectedTaskDetail(); return; }
+}
+async function handleSelectedTaskDetailSubmit(e){
+  if(e.target?.id !== 'selectedTaskEditForm') return;
+  e.preventDefault();
+  if(formBusy(e, true, 'Saving edit...')) return;
+  const id=$('selectedEditTaskId').value;
+  const t=state.tasks.find(x=>x.taskId===id);
+  if(!t || !canEditTask(t)){ formBusy(e, false); toast('Edit not allowed'); return; }
+  try{
+    const note=clean($('selectedEditNote').value);
+    if(API_URL){
+      const payload = await apiPost({ action:'editTask', taskId:id, taskDescription:clean($('selectedEditDescription').value), assignedTo:$('selectedEditAssignee').value, priority:$('selectedEditPriority').value, dueDate:$('selectedEditDueDate').value, drawingLink:clean($('selectedEditLink').value), note });
+      master = payload.data || await fetchBootstrap(); state = JSON.parse(JSON.stringify(master));
+    } else {
+      const old=`${t.taskDescription} | ${t.assignedTo} | ${t.priority} | ${t.dueDate} | ${t.drawingLink}`;
+      t.taskDescription=clean($('selectedEditDescription').value); t.assignedTo=$('selectedEditAssignee').value; t.managerCode=managerCodeForAssignee(t.assignedTo); t.priority=$('selectedEditPriority').value; t.dueDate=$('selectedEditDueDate').value; t.drawingLink=clean($('selectedEditLink').value); t.lastUpdated=todayISO(); addTimeline(t,'Edited', note); addAudit('TASK_EDITED', id, `Old: ${old}`); saveState();
+    }
+    selectedDetailEditingTaskId = null;
+    renderAll();
+    const select=$('updateTaskId'); if(select) select.value=id;
+    renderSelectedTaskDetail();
+    toast('Selected task edited');
+  }catch(err){ showError(err); } finally { formBusy(e, false); }
+}
+
 function renderTeam(){
   const codes=visiblePeopleCodes(); const rows=people().filter(s=>codes.includes(s.code));
   $('teamTableBody').innerHTML=rows.map(s=>`<tr><td><b>${escapeHtml(s.code)}</b></td><td>${escapeHtml(s.name)}</td><td>${escapeHtml(s.role)}</td><td>${escapeHtml(s.role === 'Owner' ? 'No reporting head' : (s.managerCode ? reportingHeadLabel(s.managerCode) : 'Not assigned'))}</td><td>${escapeHtml(s.email || '-')}</td><td>${escapeHtml(s.active || 'Yes')}</td><td>${state.tasks.filter(t=>t.assignedTo===s.code && isOpen(t)).length}</td></tr>`).join('') || '<tr><td colspan="7">No team records visible.</td></tr>';
@@ -752,7 +859,7 @@ function showTeamTab(tab='directory'){
 function showAdminTab(tab='people'){
   if(tab==='audit'){ showView('audit'); return; }
   if(currentView !== 'admin') showView('admin');
-  document.querySelectorAll('[data-admin-tab]').forEach(btn=>btn.classList.toggle('active', btn.dataset.adminTab===tab));
+  setAdminTabActive(tab);
   const showPeople = tab==='people';
   const showConsole = tab==='console';
   const showSecurity = tab==='security';
@@ -760,6 +867,42 @@ function showAdminTab(tab='people'){
   $('adminConsolePane')?.classList.toggle('hidden', !showConsole);
   $('adminSecurityPane')?.classList.toggle('hidden', !showSecurity);
   if(showSecurity) renderLoginSecurity();
+}
+function parseSecurityContext(raw='') {
+  const detail = clean(raw);
+  if(!detail) return [];
+  const jsonStart = detail.indexOf('{');
+  if(jsonStart !== -1){
+    try{
+      const ctx = JSON.parse(detail.slice(jsonStart));
+      return [
+        ctx.timezone ? ['Timezone', ctx.timezone] : null,
+        ctx.screen ? ['Screen', ctx.screen] : null,
+        ctx.platform ? ['Platform', ctx.platform] : null,
+        ctx.language ? ['Language', ctx.language] : null,
+        ctx.locationPermission ? ['Location', ctx.locationPermission] : null,
+        ctx.userAgent ? ['Browser', ctx.userAgent] : null
+      ].filter(Boolean);
+    }catch(e){}
+  }
+  return detail.split(/\s+·\s+/).filter(Boolean).slice(0,7).map((part, i)=>{
+    const bits = part.split(':');
+    return bits.length > 1 ? [bits.shift(), bits.join(':').trim()] : [i === 0 ? 'Detail' : 'Info', part];
+  });
+}
+function securityDetailHtml(a){
+  const raw = clean(a.reason || a.detail || '');
+  const pieces = parseSecurityContext(raw);
+  if(!pieces.length) return '';
+  return `<div class="security-detail-grid">${pieces.map(([k,v])=>`<span><b>${escapeHtml(k)}</b> ${escapeHtml(v)}</span>`).join('')}</div>`;
+}
+function securityDetailText(a){
+  const raw = clean(a.reason || a.detail || '');
+  const pieces = parseSecurityContext(raw);
+  return pieces.length ? pieces.map(([k,v])=>`${k}: ${v}`).join(' | ') : raw;
+}
+function auditDetailForDisplay(a){
+  return a.category === 'Security' ? securityDetailText(a) : clean(a.reason || a.detail || '');
 }
 function renderLoginSecurity(){
   const list=$('loginSecurityList'); if(!list) return;
@@ -773,14 +916,11 @@ function renderLoginSecurity(){
     list.innerHTML = emptyState('Login audit records will appear after live login activity.');
     return;
   }
-  list.innerHTML = `<div class="security-table-head"><span>User</span><span>Action</span><span>Time</span></div>` + events.map(a=>{
-    const detail = clean(a.reason || a.detail || '');
-    return `<div class="security-row security-row-card">
+  list.innerHTML = `<div class="security-table-head"><span>User</span><span>Action & device details</span><span>Time</span></div>` + events.map(a=>`<div class="security-row-card">
       <div class="security-user"><b>${escapeHtml(personName(a.by))}</b><small>${escapeHtml(personMeta(a.by))}</small></div>
-      <div class="security-action"><span>${escapeHtml(auditActionLabel(a.action))}</span>${detail ? `<small>${escapeHtml(detail)}</small>` : ''}</div>
+      <div class="security-action"><span>${escapeHtml(auditActionLabel(a.action))}</span>${securityDetailHtml(a)}</div>
       <time>${escapeHtml(a.time || '')}</time>
-    </div>`;
-  }).join('');
+    </div>`).join('');
 }
 
 function canEditPerson(target){ const user = currentUser(); if(!user || !target) return false; if(user.role === 'Owner') return true; if(user.role === 'Manager') return target.role === 'Staff' && target.managerCode === user.code; return false; }
@@ -791,11 +931,12 @@ function renderPeople(){
   $('peopleHelp').textContent = user.role === 'Owner' ? 'Owner can add, rename, set email/PIN, assign reporting heads and deactivate people.' : 'Manager can rename and set PIN for staff under their team only.';
   $('personForm').style.display = ['Owner','Manager'].includes(user.role) ? 'grid' : 'none';
   if(!rows.length){ list.innerHTML = `<div class="empty-state"><b>No people settings available.</b><span>Staff cannot manage users.</span></div>`; return; }
-  list.innerHTML = rows.map(s=>{ const editable = canEditPerson(s); const deleted = s.deleted === 'Yes'; const canDelete = currentUser()?.role === 'Owner' && ['Manager','Staff'].includes(s.role); return `<div class="person-row ${deleted ? 'deleted-person' : ''}" data-code="${escapeHtml(s.code)}"><div class="person-avatar">${escapeHtml(initials(s.name || s.code))}</div><div class="person-info"><b>${escapeHtml(s.name || s.code)}${deleted ? ' · Deleted' : ''}</b><small>${escapeHtml(peopleRowMeta(s))}</small></div><button class="pill edit-person" data-code="${escapeHtml(s.code)}" ${editable && !deleted ? '' : 'disabled'}>Edit</button><button class="pill danger-person" data-code="${escapeHtml(s.code)}" ${editable && s.role==='Staff' && !deleted ? '' : 'disabled'}>${s.active==='No'?'Activate':'Deactivate'}</button><button class="pill danger-task delete-person" data-code="${escapeHtml(s.code)}" ${canDelete && !deleted ? '' : 'disabled'}>Delete</button></div>`; }).join('') + `<div class="staff-capacity-note">Owner can delete tasks and staff/manager records. If a person has task history, deletion becomes safe deactivation so old records stay readable.</div>`;
+  list.innerHTML = rows.map(s=>{ const editable = canEditPerson(s); const deleted = s.deleted === 'Yes'; const canDelete = currentUser()?.role === 'Owner' && ['Manager','Staff'].includes(s.role); const activeLabel = deleted ? 'Deleted' : (s.active==='No' ? 'Inactive' : 'Active'); const activeClass = deleted ? 'deleted' : (s.active==='No' ? 'inactive' : 'active'); return `<div class="person-row ${deleted ? 'deleted-person' : ''}" data-code="${escapeHtml(s.code)}"><div class="person-avatar">${escapeHtml(initials(s.name || s.code))}</div><div class="person-info"><b>${escapeHtml(s.name || s.code)}${deleted ? ' · Deleted' : ''}</b><small>${escapeHtml(peopleRowMeta(s))}</small></div><div class="person-row-actions"><span class="person-status-pill ${activeClass}">${activeLabel}</span><button class="pill edit-person" data-code="${escapeHtml(s.code)}" ${editable && !deleted ? '' : 'disabled'}>Edit</button><button class="pill danger-person" data-code="${escapeHtml(s.code)}" ${editable && s.role==='Staff' && !deleted ? '' : 'disabled'}>${s.active==='No'?'Activate':'Deactivate'}</button><button class="pill danger-task delete-person" data-code="${escapeHtml(s.code)}" ${canDelete && !deleted ? '' : 'disabled'}>Delete</button></div></div>`; }).join('') + `<div class="staff-capacity-note">Owner can delete tasks and staff/manager records. If a person has task history, deletion becomes safe deactivation so old records stay readable.</div>`;
 }
 function renderPersonFormRules(){
   const user=currentUser(); if(!user) return;
   const role=$('personRole')?.value || 'Staff';
+  const currentManager = $('personManager')?.value || '';
   const heads = reportingHeadOptions();
   $('personManager').innerHTML = ['<option value="">No reporting head</option>', ...heads.map(h=>optionHtml(h.code, `${h.name} (${h.role} · ${h.code})`))].join('');
   if(user.role==='Manager'){
@@ -807,6 +948,8 @@ function renderPersonFormRules(){
   else {
     $('personRole').disabled=false;
     $('personManager').disabled = role !== 'Staff';
+    const allowedHeadCodes = ['', ...heads.map(h=>h.code)];
+    $('personManager').value = role === 'Staff' && allowedHeadCodes.includes(currentManager) ? currentManager : '';
   }
   $('personCode').readOnly = true;
   if(!$('personEditingCode').value) $('personCode').value = API_URL ? 'Assigned automatically' : nextPersonCode(role);
@@ -893,10 +1036,7 @@ function openTaskEdit(taskId){
   $('sideLink').value=t.drawingLink || '';
   $('sideRemarks').value='';
   fillSelect('sidePriority', state.config.priorities, t.priority);
-  const user=currentUser(); let allowed=[];
-  if(user.role==='Owner') allowed=activePeople();
-  else if(user.role==='Manager') allowed=activePeople().filter(p=>p.code===user.code || p.managerCode===user.code);
-  else allowed=[user];
+  const user=currentUser(); const allowed=assignablePeopleForUser(user);
   $('sideAssignee').innerHTML=allowed.map(p=>optionHtml(p.code, `${p.name} (${p.role})`)).join('');
   $('sideAssignee').value=t.assignedTo;
   const statusOptions = statusOptionsForTask(user, t);
@@ -911,7 +1051,7 @@ function openTaskEdit(taskId){
 function openTaskEditModalFallback(t){
   $('editTaskId').value=t.taskId; $('editDescription').value=t.taskDescription || ''; $('editDueDate').value=t.dueDate || ''; $('editLink').value=t.drawingLink || ''; $('editNote').value='';
   fillSelect('editPriority', state.config.priorities, t.priority);
-  const user=currentUser(); let allowed=[]; if(user.role==='Owner') allowed=activePeople(); else if(user.role==='Manager') allowed=activePeople().filter(p=>p.code===user.code || p.managerCode===user.code); else allowed=[user];
+  const user=currentUser(); const allowed=assignablePeopleForUser(user);
   $('editAssignee').innerHTML=allowed.map(p=>optionHtml(p.code, `${p.name} (${p.role})`)).join(''); $('editAssignee').value=t.assignedTo;
   $('taskEditModal').classList.remove('hidden');
 }
@@ -931,7 +1071,7 @@ async function submitTaskSideForm(e){
     const changed = clean($('sideDescription').value)!==clean(t.taskDescription) || $('sideAssignee').value!==t.assignedTo || $('sidePriority').value!==t.priority || $('sideDueDate').value!==t.dueDate || clean($('sideLink').value)!==clean(t.drawingLink);
     if(changed){
       if(API_URL){ const payload = await apiPost({ action:'editTask', taskId:id, taskDescription:clean($('sideDescription').value), assignedTo:$('sideAssignee').value, priority:$('sidePriority').value, dueDate:$('sideDueDate').value, drawingLink:clean($('sideLink').value), note:remarks }); master = payload.data || await fetchBootstrap(); state = JSON.parse(JSON.stringify(master)); }
-      else { t.taskDescription=clean($('sideDescription').value); t.assignedTo=$('sideAssignee').value; t.priority=$('sidePriority').value; t.dueDate=$('sideDueDate').value; t.drawingLink=clean($('sideLink').value); t.lastUpdated=todayISO(); addTimeline(t,'Edited', remarks); addAudit('TASK_EDITED', id, 'Edited from side panel'); saveState(); }
+      else { t.taskDescription=clean($('sideDescription').value); t.assignedTo=$('sideAssignee').value; t.managerCode=managerCodeForAssignee(t.assignedTo); t.priority=$('sidePriority').value; t.dueDate=$('sideDueDate').value; t.drawingLink=clean($('sideLink').value); t.lastUpdated=todayISO(); addTimeline(t,'Edited', remarks); addAudit('TASK_EDITED', id, 'Edited from side panel'); saveState(); }
     }
     if(newStatus){
       const current = state.tasks.find(x=>x.taskId===id) || t;
@@ -965,7 +1105,7 @@ async function submitTaskEdit(e){
   e.preventDefault(); if(formBusy(e, true, 'Saving edit...')) return; const user=currentUser(); const id=$('editTaskId').value; const t=state.tasks.find(x=>x.taskId===id); if(!t || !canEditTask(t)){ formBusy(e, false); toast('Edit not allowed'); return; }
   try{
     if(API_URL){ const payload = await apiPost({ action:'editTask', taskId:id, taskDescription:clean($('editDescription').value), assignedTo:$('editAssignee').value, priority:$('editPriority').value, dueDate:$('editDueDate').value, drawingLink:clean($('editLink').value), note:clean($('editNote').value) }); master = payload.data || await fetchBootstrap(); state = JSON.parse(JSON.stringify(master)); }
-    else { const old=`${t.taskDescription} | ${t.assignedTo} | ${t.priority} | ${t.dueDate}`; t.taskDescription=clean($('editDescription').value); t.assignedTo=$('editAssignee').value; t.priority=$('editPriority').value; t.dueDate=$('editDueDate').value; t.drawingLink=clean($('editLink').value); t.lastUpdated=todayISO(); addTimeline(t,'Edited', clean($('editNote').value)); addAudit('TASK_EDITED', id, `Old: ${old}`); saveState(); }
+    else { const old=`${t.taskDescription} | ${t.assignedTo} | ${t.priority} | ${t.dueDate}`; t.taskDescription=clean($('editDescription').value); t.assignedTo=$('editAssignee').value; t.managerCode=managerCodeForAssignee(t.assignedTo); t.priority=$('editPriority').value; t.dueDate=$('editDueDate').value; t.drawingLink=clean($('editLink').value); t.lastUpdated=todayISO(); addTimeline(t,'Edited', clean($('editNote').value)); addAudit('TASK_EDITED', id, `Old: ${old}`); saveState(); }
     $('taskEditModal').classList.add('hidden'); renderAll(); toast('Task edited');
   }catch(err){ showError(err); } finally { formBusy(e, false); }
 }
@@ -1044,37 +1184,152 @@ function renderAudit(){
   if($('auditSecurityCount')) $('auditSecurityCount').textContent=all.filter(a=>a.category==='Security').length;
   if($('auditDeleteCount')) $('auditDeleteCount').textContent=all.filter(a=>a.category==='Delete / Archive').length;
   const rows=filteredAuditRows().slice(0,150);
-  body.innerHTML = rows.length ? rows.map(a=>`<tr><td>${escapeHtml(a.time)}</td><td><b>${escapeHtml(personName(a.by))}</b><div class="audit-note">${escapeHtml(personMeta(a.by))}</div></td><td><span class="badge">${escapeHtml(a.category)}</span></td><td><b>${escapeHtml(auditActionLabel(a.action))}</b></td><td>${escapeHtml(a.target)}</td><td><div class="audit-change"><span>${escapeHtml(a.oldValue)}</span><b>→</b><span>${escapeHtml(a.newValue)}</span></div></td><td>${escapeHtml(a.reason || a.detail)}</td></tr>`).join('') : '<tr><td colspan="7">No audit activity found for the selected filters.</td></tr>';
+  body.innerHTML = rows.length ? rows.map(a=>`<tr class="audit-record-row"><td data-label="Time">${escapeHtml(a.time)}</td><td data-label="User"><b>${escapeHtml(personName(a.by))}</b><div class="audit-note">${escapeHtml(personMeta(a.by))}</div></td><td data-label="Category"><span class="badge">${escapeHtml(a.category)}</span></td><td data-label="Action"><b>${escapeHtml(auditActionLabel(a.action))}</b></td><td data-label="Record">${escapeHtml(a.target)}</td><td data-label="Old → New"><div class="audit-change"><span>${escapeHtml(a.oldValue)}</span><b>→</b><span>${escapeHtml(a.newValue)}</span></div></td><td data-label="Reason / Detail">${escapeHtml(auditDetailForDisplay(a))}</td></tr>`).join('') : '<tr class="audit-empty-row"><td colspan="7" data-label="Audit">No audit activity found for the selected filters.</td></tr>';
 }
-function csvEscape(v){
-  let value = clean(v);
-  if(/^[=+\-@]/.test(value)) value = "'" + value;
-  return '"'+value.replaceAll('"','""')+'"';
-}
-function downloadFile(name, text){ const blob=new Blob([text],{type:'text/csv'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=name; a.click(); URL.revokeObjectURL(url); }
 function dateStamp(){ return new Date().toISOString().slice(0,10); }
-function taskCsv(rows=state.tasks||[]){ const headers=['Task ID','Description','Assigned To','Assigned Name','Priority','Due Date','Status','Deleted','Archived','Staff Remarks','Check Remarks','Link','Created By','Checked By','Last Updated']; return [headers.join(','),...rows.map(t=>[t.taskId,t.taskDescription,t.assignedTo,personByCode(t.assignedTo)?.name||'',t.priority,t.dueDate,t.status,t.deleted,t.archived,t.staffRemarks,t.checkRemarks,t.drawingLink,t.createdBy,t.checkedBy,t.lastUpdated].map(csvEscape).join(','))].join('\n'); }
-function peopleCsv(rows=people()){ const headers=['Code','Name','Role','Email','Manager Code','Manager Name','Active','Deleted','Notes']; return [headers.join(','),...rows.map(p=>[p.code,p.name,p.role,p.email,p.managerCode,personByCode(p.managerCode)?.name||'',p.active,p.deleted,p.notes].map(csvEscape).join(','))].join('\n'); }
-function auditCsv(rows=state.auditLogs||[]){ const headers=['Time','By Code','By Name','Role','Category','Action','Record','Old Value','New Value','Reason','Detail']; return [headers.join(','),...rows.map(x=>normalizeAudit(x)).map(a=>[a.time,a.by,personByCode(a.by)?.name||a.by,a.role||'',a.category,a.action,a.target,a.oldValue,a.newValue,a.reason,a.detail].map(csvEscape).join(','))].join('\n'); }
-function remarksCsv(rows=state.tasks||[]){ const headers=['Task ID','Timeline Date','By Code','By Name','Action','Note']; const lines=[]; rows.forEach(t=>(t.timeline||[]).forEach(r=>lines.push([t.taskId,r.date,r.by,personByCode(r.by)?.name||r.by,r.action,r.note].map(csvEscape).join(',')))); return [headers.join(','),...lines].join('\n'); }
-async function liveBackup(type){ if(!API_URL) return null; const payload=await apiPost({ action:'backup', backupType:type }); return payload.data; }
-async function exportCsv(type, btn){ const user=currentUser(); if(user?.role!=='Owner'){ toast('Only Owner can export backup.'); return; }
-  if(btn?.dataset.busy === '1') return; setButtonBusy(btn, true, 'Preparing backup...');
+function downloadBlob(name, blob){
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 1200);
+}
+async function liveBackup(type){ if(!API_URL) return null; const payload=await apiPost({ action:'backup', backupType:type, backupFormat:'pdf' }); return payload.data; }
+function pdfAscii(value=''){
+  return clean(value).replace(/[\u2013\u2014]/g, '-').replace(/[\u2022\u00b7]/g, '-').replace(/[^\x20-\x7E\n\r\t]/g, ' ');
+}
+function pdfEscape(value=''){
+  return pdfAscii(value).replace(/\\/g,'\\\\').replace(/\(/g,'\\(').replace(/\)/g,'\\)');
+}
+function wrapPdfLine(text='', maxChars=92){
+  const source = pdfAscii(text).replace(/\s+/g,' ').trim();
+  if(!source) return [''];
+  const lines=[]; let line='';
+  source.split(' ').forEach(word=>{
+    const pieces=[];
+    while(word.length > maxChars){ pieces.push(word.slice(0,maxChars-1)); word = word.slice(maxChars-1); }
+    pieces.push(word);
+    pieces.forEach(part=>{
+      if(!line){ line=part; return; }
+      if((line + ' ' + part).length <= maxChars) line += ' ' + part;
+      else { lines.push(line); line=part; }
+    });
+  });
+  if(line) lines.push(line);
+  return lines;
+}
+function pdfBuildLines(title, sections){
+  const user=currentUser();
+  const lines=[
+    {text:title, size:18, bold:true, gap:8},
+    {text:`Parkar and Associates Task Management Backup`, size:11, bold:true},
+    {text:`Exported: ${nowStamp()} | Exported by: ${user?.name || '-'} (${user?.code || '-'})`, size:10},
+    {text:`Security note: PIN values are never exported.`, size:10, gap:10}
+  ];
+  sections.forEach(section=>{
+    lines.push({text:section.title, size:14, bold:true, gap:6});
+    if(section.note) lines.push({text:section.note, size:9});
+    if(!section.rows.length){ lines.push({text:'No records found.', size:10, gap:6}); return; }
+    section.rows.forEach((row, idx)=>{
+      lines.push({text:`${idx+1}. ${row.heading || 'Record'}`, size:11, bold:true});
+      row.fields.forEach(([k,v])=>{
+        wrapPdfLine(`${k}: ${v || '-'}`, 96).forEach((line,i)=>lines.push({text:i ? `   ${line}` : `  ${line}`, size:9}));
+      });
+      if(row.note) wrapPdfLine(`  Note: ${row.note}`, 96).forEach(line=>lines.push({text:line, size:9}));
+      lines.push({text:'', size:8, gap:2});
+    });
+  });
+  return lines;
+}
+function makePdf(title, sections){
+  const pageW=595.28, pageH=841.89, margin=42;
+  const maxY=pageH-margin, minY=margin;
+  const allLines=pdfBuildLines(title, sections);
+  const pages=[[]]; let y=maxY;
+  allLines.forEach(item=>{
+    const size=item.size || 10;
+    const lh=Math.max(11, size + 4) + (item.gap || 0);
+    if(y - lh < minY){ pages.push([]); y=maxY; }
+    pages[pages.length-1].push({...item, y});
+    y -= lh;
+  });
+  const objects=[];
+  const add=o=>{ objects.push(o); return objects.length; };
+  add(''); // 1 catalog placeholder
+  add(''); // 2 pages placeholder
+  const fontRegular=add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>');
+  const fontBold=add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>');
+  const pageIds=[];
+  pages.forEach((page, pageIndex)=>{
+    const commands=[];
+    page.forEach(line=>{
+      if(line.text === '') return;
+      const font=line.bold ? 'F2' : 'F1';
+      const size=line.size || 10;
+      commands.push(`BT /${font} ${size} Tf 1 0 0 1 ${margin.toFixed(2)} ${line.y.toFixed(2)} Tm (${pdfEscape(line.text)}) Tj ET`);
+    });
+    commands.push(`BT /F1 8 Tf 1 0 0 1 ${margin.toFixed(2)} 24 Tm (Page ${pageIndex+1} of ${pages.length}) Tj ET`);
+    const stream=commands.join('\n');
+    const contentId=add(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`);
+    const pageId=add(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageW} ${pageH}] /Resources << /Font << /F1 ${fontRegular} 0 R /F2 ${fontBold} 0 R >> >> /Contents ${contentId} 0 R >>`);
+    pageIds.push(pageId);
+  });
+  objects[0]='<< /Type /Catalog /Pages 2 0 R >>';
+  objects[1]=`<< /Type /Pages /Kids [${pageIds.map(id=>id+' 0 R').join(' ')}] /Count ${pageIds.length} >>`;
+  let pdf='%PDF-1.4\n';
+  const offsets=[0];
+  objects.forEach((obj,i)=>{ offsets[i+1]=pdf.length; pdf += `${i+1} 0 obj\n${obj}\nendobj\n`; });
+  const xref=pdf.length;
+  pdf += `xref\n0 ${objects.length+1}\n0000000000 65535 f \n`;
+  for(let i=1;i<=objects.length;i++) pdf += String(offsets[i]).padStart(10,'0') + ' 00000 n \n';
+  pdf += `trailer << /Size ${objects.length+1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
+  return new Blob([pdf], {type:'application/pdf'});
+}
+function taskPdfSection(rows=state.tasks || []){
+  return { title:'Tasks Backup', note:'Includes current task fields, deleted flag, archived flag, review fields, and drawing link.', rows:rows.map(t=>({ heading:`${t.taskId} - ${t.taskDescription || '-'}`, fields:[['Task ID',t.taskId],['Description',t.taskDescription],['Assigned To',`${personName(t.assignedTo)} (${t.assignedTo || '-'})`],['Priority',t.priority],['Due Date',t.dueDate],['Status',statusLabel(t.status)],['Deleted',t.deleted || 'No'],['Archived',t.archived || 'No'],['Staff Remarks',t.staffRemarks],['Check Remarks',t.checkRemarks],['Link',t.drawingLink],['Created By',t.createdBy],['Checked By',t.checkedBy],['Last Updated',t.lastUpdated]] })) };
+}
+function peoplePdfSection(rows=people()){
+  return { title:'People Backup', note:'PIN values are intentionally excluded from this backup.', rows:rows.map(p=>({ heading:`${p.name || p.code} (${p.code})`, fields:[['Code',p.code],['Name',p.name],['Role',p.role],['Email',p.email],['Reporting Head',p.managerCode ? reportingHeadLabel(p.managerCode) : 'No reporting head'],['Active',p.active || 'Yes'],['Deleted',p.deleted || 'No'],['Notes',p.notes]] })) };
+}
+function auditPdfSection(rows=state.auditLogs || []){
+  return { title:'Audit Log Backup', note:'Shows who changed what, when, old value, new value, and reason.', rows:rows.map(x=>normalizeAudit(x)).map(a=>({ heading:`${auditActionLabel(a.action)} - ${a.target || '-'}`, fields:[['Time',a.time],['By',`${personName(a.by)} (${a.by || '-'})`],['Role',a.role],['Category',a.category],['Action',a.action],['Record',a.target],['Old Value',a.oldValue],['New Value',a.newValue],['Reason',a.reason],['Detail',auditDetailForDisplay(a)]] })) };
+}
+function remarksPdfSection(rows=state.tasks || []){
+  const timeline=[];
+  rows.forEach(t=>(t.timeline || []).forEach(r=>timeline.push({ heading:`${t.taskId} - ${r.action || 'Timeline'}`, fields:[['Task ID',t.taskId],['Timeline Date',r.date],['By',`${personName(r.by)} (${r.by || '-'})`],['Action',r.action],['Note',r.note]] })));
+  return { title:'Remarks Timeline Backup', note:'Timeline and progress/review remarks grouped as records.', rows:timeline };
+}
+function backupSections(type){
+  if(type==='tasks') return [taskPdfSection()];
+  if(type==='people') return [peoplePdfSection()];
+  if(type==='audit') return [auditPdfSection()];
+  return [taskPdfSection(), peoplePdfSection(), auditPdfSection(), remarksPdfSection()];
+}
+function backupTitle(type){
+  if(type==='tasks') return 'Tasks Backup PDF';
+  if(type==='people') return 'People Backup PDF';
+  if(type==='audit') return 'Audit Log Backup PDF';
+  return 'Full Backup PDF';
+}
+async function refreshBackupStateAfterLiveExport(type){
+  if(!API_URL) return;
+  await liveBackup(type);
+  try{ master = await fetchBootstrap(); state = JSON.parse(JSON.stringify(master)); migrateDemoState(); }
+  catch(e){}
+}
+async function exportPdfBackup(type, btn){
+  const user=currentUser(); if(user?.role!=='Owner'){ toast('Only Owner can export backup.'); return; }
+  if(btn?.dataset.busy === '1') return; setButtonBusy(btn, true, 'Preparing PDF...');
   try{
-    let live=null; if(API_URL) live=await liveBackup(type);
-    if(type==='audit'){ downloadFile(`parkar-audit-log-${dateStamp()}.csv`, live?.csv || auditCsv()); if(!API_URL) addAudit('EXPORT_AUDIT','AUDIT','Audit CSV exported'); saveState(); renderAudit(); return; }
-    if(type==='people'){ downloadFile(`parkar-people-backup-${dateStamp()}.csv`, live?.csv || peopleCsv()); if(!API_URL) addAudit('EXPORT_PEOPLE','PEOPLE','People CSV backup exported'); saveState(); renderAudit(); return; }
-    downloadFile(`parkar-task-backup-${dateStamp()}.csv`, live?.csv || taskCsv()); if(!API_URL) addAudit('EXPORT_TASKS','TASKS','Task CSV backup exported'); saveState(); renderAudit();
+    if(API_URL) await refreshBackupStateAfterLiveExport(type);
+    else { addAudit(type === 'full' ? 'EXPORT_FULL_BACKUP' : 'EXPORT_' + type.toUpperCase(), 'BACKUP', 'PDF backup exported'); saveState(); }
+    const blob = makePdf(backupTitle(type), backupSections(type));
+    const fileLabel = type === 'full' ? 'full-backup' : `${type}-backup`;
+    downloadBlob(`parkar-${fileLabel}-${dateStamp()}.pdf`, blob);
+    renderAudit();
+    toast(type === 'full' ? 'Full backup PDF downloaded' : `${backupTitle(type)} downloaded`);
   }catch(err){ showError(err); } finally { setButtonBusy(btn, false); }
 }
-async function exportFullBackup(btn){ const user=currentUser(); if(user?.role!=='Owner'){ toast('Only Owner can export backup.'); return; }
-  if(btn?.dataset.busy === '1') return; setButtonBusy(btn, true, 'Preparing backup...');
-  try{
-    const d=dateStamp(); let live=null; if(API_URL) live=await liveBackup('full');
-    const files=live?.files || [{name:`parkar-tasks-${d}.csv`,csv:taskCsv()},{name:`parkar-people-${d}.csv`,csv:peopleCsv()},{name:`parkar-audit-${d}.csv`,csv:auditCsv()},{name:`parkar-remarks-timeline-${d}.csv`,csv:remarksCsv()}];
-    files.forEach(f=>downloadFile(f.name, f.csv)); if(!API_URL) addAudit('EXPORT_FULL_BACKUP','BACKUP','Full backup exported'); saveState(); renderAudit(); toast('Full backup files downloaded');
-  }catch(err){ showError(err); } finally { setButtonBusy(btn, false); }
-}
+
 async function archiveCompletedTasks(){ const user=currentUser(); if(user?.role!=='Owner'){ toast('Only Owner can archive.'); return; }
   try{
     if(API_URL){ const payload = await apiPost({ action:'archiveCompleted' }); master = payload.data || await fetchBootstrap(); state = JSON.parse(JSON.stringify(master)); renderAll(); toast('Completed tasks archived'); return; }
@@ -1108,7 +1363,7 @@ async function submitUpdate(e){
 boot();
 
 
-// ---------- v2.6 hardened login UI helpers ----------
+// ---------- hardened login UI helpers ----------
 async function maybeForcePinChange(user){
   if(!user || !user.mustChangePin) return;
   toast('Please set a new PIN before continuing.');
@@ -1170,7 +1425,7 @@ async function runSystemStatusCheck(){
       const payload = await apiPost({ action:'systemStatus' });
       status = payload.status || {};
     } else {
-      status = { frontendVersion:APP_VERSION, backendVersion:'Preview mode', loggedInUser:currentUser()?.name || '-', sheetConnection:'Not connected in preview', writePermission:'Not tested in preview' };
+      status = { frontendVersion:APP_VERSION, backendVersion:'Not connected', loggedInUser:currentUser()?.name || '-', sheetConnection:'Not connected', writePermission:'Not checked' };
     }
     if(box) box.innerHTML = `
       <div class="status-check-grid">
@@ -1191,4 +1446,4 @@ function maybeWarnVersionMismatch(payload){
     }
   } catch(e){}
 }
-// ---------- end v2.6 helpers ----------
+// ---------- end hardened login UI helpers ----------

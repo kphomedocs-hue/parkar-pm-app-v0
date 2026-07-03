@@ -1,6 +1,6 @@
 {
   "brand": "Parkar and Associates",
-  "version": "2.6.1-final-safety-fixed",
+  "version": "2.7.9-full-code-architecture-checked",
   "limits": {
     "maxOwners": 2,
     "maxActivePeople": 30
@@ -14,7 +14,7 @@
       "pin": "0000",
       "managerCode": "",
       "active": "Yes",
-      "notes": "Demo owner record for offline preview only. Set real users and PINs in Apps Script private setup.",
+      "notes": "Initial owner record. Set real users and PINs in Apps Script private setup.",
       "failedAttempts": 0,
       "lockedUntil": ""
     },
@@ -26,7 +26,7 @@
       "pin": "0000",
       "managerCode": "O001",
       "active": "Yes",
-      "notes": "Demo manager record for offline preview only. Set real users and PINs in Apps Script private setup.",
+      "notes": "Initial manager record. Set real users and PINs in Apps Script private setup.",
       "failedAttempts": 0,
       "lockedUntil": ""
     },
@@ -38,7 +38,7 @@
       "pin": "0000",
       "managerCode": "M001",
       "active": "Yes",
-      "notes": "Demo staff record for offline preview only. Set real users and PINs in Apps Script private setup.",
+      "notes": "Initial staff record. Set real users and PINs in Apps Script private setup.",
       "failedAttempts": 0,
       "lockedUntil": ""
     }
@@ -75,7 +75,7 @@
           "date": "2026-06-22",
           "by": "O001",
           "action": "Created",
-          "note": "Initial sample task"
+          "note": "Initial task"
         }
       ]
     },
@@ -84,14 +84,14 @@
       "dateAssigned": "2026-06-22",
       "projectCode": "GENERAL",
       "projectName": "General Tasks",
-      "taskDescription": "Submit a staff self-task request sample",
+      "taskDescription": "Submit a staff self-task request",
       "assignedTo": "S001",
       "assignedRole": "Staff",
       "managerCode": "M001",
       "priority": "Low",
       "dueDate": "2026-06-25",
       "status": "Requested",
-      "staffRemarks": "Request created by staff sample",
+      "staffRemarks": "Request created by staff",
       "checkRemarks": "",
       "completedDate": "",
       "checkedBy": "",
@@ -172,8 +172,8 @@
       "role": "System",
       "category": "System",
       "action": "DEPLOYMENT_TEMPLATE_READY",
-      "target": "v2.6.0",
-      "detail": "Parkar and Associates v2.6.0 stability patch preview data prepared",
+      "target": "v2.7.9",
+      "detail": "Parkar and Associates v2.7.9 full code architecture check local data prepared",
       "oldValue": "",
       "newValue": "",
       "reason": "Deployment setup"

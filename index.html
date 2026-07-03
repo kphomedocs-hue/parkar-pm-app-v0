@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Parkar & Associates — Task Management v2.6.1</title>
+  <title>Parkar & Associates — Task Management v2.7.9</title>
   <link rel="icon" type="image/png" href="assets/favicon-32.png" />
   <link rel="stylesheet" href="styles.css" />
 </head>
@@ -19,7 +19,7 @@
       <p>Owner and Manager: email + PIN. Staff: staff code + PIN.</p>
       <form id="loginForm" class="form-card">
         <label>Email or Staff Code<input id="loginEmail" autocomplete="username" placeholder="Email or S001" required /></label>
-        <label>PIN<input id="loginPin" type="password" inputmode="numeric" autocomplete="current-password" placeholder="Enter PIN" required /></label>
+        <label>PIN<div class="password-row"><input id="loginPin" type="password" inputmode="numeric" autocomplete="current-password" placeholder="Enter PIN" required /><button class="pin-toggle" type="button" data-toggle-password="loginPin" aria-label="Show PIN">Show</button></div></label>
         <button class="primary-btn" type="submit" id="loginSubmitBtn">Login</button>
         <div id="loginStatus" class="login-status" aria-live="polite"></div>
       </form>
@@ -51,7 +51,6 @@
           <button id="refreshNow" class="ghost-btn">Refresh now</button>
         </div>
       </header>
-      <div class="api-mode-banner" id="apiModeBanner">Checking connection...</div>
 
       <section class="view active" id="dashboardView">
         <div class="hero-grid dashboard-main-cards">
@@ -112,8 +111,8 @@
               <div class="side-task-meta" id="sideTaskMeta"></div>
               <div class="side-actions">
                 <button class="primary-btn" type="submit">Save Update</button>
-                <button class="ghost-btn" type="button" id="sideNeedsCorrection">Needs Correction</button>
-                <button class="ghost-btn" type="button" id="sideMarkCompleted">Mark Completed</button>
+                <button class="ghost-btn warning-btn" type="button" id="sideNeedsCorrection">Needs Correction</button>
+                <button class="ghost-btn success-btn" type="button" id="sideMarkCompleted">Mark Completed</button>
               </div>
             </form>
           </aside>
@@ -170,7 +169,7 @@
             <label>Name<input id="personName" placeholder="Full name" required /></label>
             <label>Role<select id="personRole"></select></label>
             <label>Email<input id="personEmail" type="email" placeholder="email@domain.com" /></label>
-            <label>PIN<input id="personPin" inputmode="numeric" placeholder="Set / reset PIN" /><small>Required for new person. Leave blank while editing to keep existing PIN.</small></label>
+            <label>PIN<div class="password-row"><input id="personPin" type="password" inputmode="numeric" autocomplete="new-password" placeholder="Set / reset PIN" /><button class="pin-toggle" type="button" data-toggle-password="personPin" aria-label="Show PIN">Show</button></div><small>Required for new person. Leave blank while editing to keep existing PIN.</small></label>
             <label>Reporting Head<select id="personManager"></select></label>
             <label>Active Status<select id="personActive"><option>Yes</option><option>No</option></select></label>
             <button class="primary-btn" type="submit">Save Person</button>
@@ -223,10 +222,10 @@
         </div>
 
         <div class="backup-grid">
-          <article class="backup-card panel"><div class="backup-icon">☑</div><h3>Tasks Backup</h3><p>Current task data including deleted and archived flags.</p><button id="exportTasksBtn" class="primary-btn" type="button">Download Tasks CSV</button></article>
-          <article class="backup-card panel"><div class="backup-icon">◉</div><h3>People Backup</h3><p>Owner, manager and staff records. PIN values are never shown.</p><button id="exportPeopleBtn" class="primary-btn" type="button">Download People CSV</button></article>
-          <article class="backup-card panel"><div class="backup-icon">◎</div><h3>Audit Log Backup</h3><p>Who changed what, when, old value, new value, and reason.</p><button id="exportAuditBtn" class="primary-btn" type="button">Download Audit CSV</button></article>
-          <article class="backup-card panel"><div class="backup-icon">▣</div><h3>Full Backup</h3><p>Downloads tasks, people, audit, and remarks timeline files.</p><button id="exportFullBackupBtn" class="primary-btn" type="button">Download Full Backup</button></article>
+          <article class="backup-card panel"><div class="backup-icon">☑</div><h3>Tasks Backup</h3><p>Current task data including deleted and archived flags.</p><button id="exportTasksBtn" class="primary-btn" type="button">Download Tasks PDF</button></article>
+          <article class="backup-card panel"><div class="backup-icon">◉</div><h3>People Backup</h3><p>Owner, manager and staff records. PIN values are never shown.</p><button id="exportPeopleBtn" class="primary-btn" type="button">Download People PDF</button></article>
+          <article class="backup-card panel"><div class="backup-icon">◎</div><h3>Audit Log Backup</h3><p>Who changed what, when, old value, new value, and reason.</p><button id="exportAuditBtn" class="primary-btn" type="button">Download Audit PDF</button></article>
+          <article class="backup-card panel"><div class="backup-icon">▣</div><h3>Full Backup</h3><p>Downloads one printable PDF containing tasks, people, audit, and remarks timeline.</p><button id="exportFullBackupBtn" class="primary-btn" type="button">Download Full Backup PDF</button></article>
         </div>
 
         <div class="toolbar panel audit-toolbar">
@@ -241,7 +240,7 @@
 
         <div class="table-card panel">
           <div class="panel-head"><div><h2>Recent Audit Trail</h2><p>Shows recent records. Full history is kept in the office database.</p></div></div>
-          <table><thead><tr><th>Time</th><th>User</th><th>Category</th><th>Action</th><th>Record</th><th>Old → New</th><th>Reason / Detail</th></tr></thead><tbody id="auditTableBody"></tbody></table>
+          <table class="audit-table"><thead><tr><th>Time</th><th>User</th><th>Category</th><th>Action</th><th>Record</th><th>Old → New</th><th>Reason / Detail</th></tr></thead><tbody id="auditTableBody"></tbody></table>
         </div>
       </section>
     </main>
@@ -307,6 +306,6 @@
     });
   </script>
 
-  <script src="app.js?v=2.6.1-login-owner-final"></script>
+  <script src="app.js?v=2.7.9-full-code-architecture-checked"></script>
 </body>
 </html>

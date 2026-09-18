@@ -39,9 +39,9 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/kg1"
           cat tmp-g1-discovery-build/parts/0* | tr -d '\r\n\t ' | base64 -d > "$RUNNER_TEMP/source.zip"
-          echo "Expected source SHA256: a8da9da94da52c19edac69ea7e2a9a8190aeb9d98a1d26bb774f81ca0a18575e"
+          echo "Expected source SHA256: 8f0f2ae4a956945cceb0736dddb83e3cf365c47aec6bbb47b3a4f71b0da420f9"
           sha256sum "$RUNNER_TEMP/source.zip"
-          echo "a8da9da94da52c19edac69ea7e2a9a8190aeb9d98a1d26bb774f81ca0a18575e  $RUNNER_TEMP/source.zip" | sha256sum -c -
+          echo "8f0f2ae4a956945cceb0736dddb83e3cf365c47aec6bbb47b3a4f71b0da420f9  $RUNNER_TEMP/source.zip" | sha256sum -c -
           unzip -q "$RUNNER_TEMP/source.zip" -d "$RUNNER_TEMP/kg1"
 
       - name: Read-only safety audit

@@ -1,0 +1,75 @@
+name: Temporary K G1 Discovery Build
+
+on:
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-37" "build-tools;36.0.0" "platform-tools"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.0'
+
+      - name: Restore isolated source
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/kg1"
+          base64 -d tmp-g1-discovery-build/source.zip.b64 > "$RUNNER_TEMP/source.zip"
+          unzip -q "$RUNNER_TEMP/source.zip" -d "$RUNNER_TEMP/kg1"
+          sha256sum "$RUNNER_TEMP/source.zip"
+
+      - name: Read-only safety audit
+        shell: bash
+        working-directory: ${{ runner.temp }}/kg1
+        run: |
+          chmod +x SAFETY_AUDIT.sh
+          ./SAFETY_AUDIT.sh
+
+      - name: Build and lint
+        shell: bash
+        working-directory: ${{ runner.temp }}/kg1
+        run: |
+          gradle --no-daemon clean :app:assembleDebug :app:lintDebug
+
+      - name: Verify APK and safety
+        shell: bash
+        working-directory: ${{ runner.temp }}/kg1
+        run: |
+          test -f app/build/outputs/apk/debug/app-debug.apk
+          mkdir -p out
+          cp app/build/outputs/apk/debug/app-debug.apk out/K_G1_Discovery_v0_1.apk
+          sha256sum out/K_G1_Discovery_v0_1.apk | tee out/SHA256.txt
+          if unzip -p out/K_G1_Discovery_v0_1.apk AndroidManifest.xml 2>/dev/null | strings | grep -E 'INTERNET|ACCESS_WIFI_STATE|CHANGE_WIFI_STATE|NEARBY_WIFI_DEVICES'; then
+            echo "Unexpected network/Wi-Fi permission marker found"
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: K_G1_Discovery_v0_1
+          path: |
+            ${{ runner.temp }}/kg1/out/K_G1_Discovery_v0_1.apk
+            ${{ runner.temp }}/kg1/out/SHA256.txt
+            ${{ runner.temp }}/kg1/app/build/reports/lint-results-debug.html
+          if-no-files-found: error

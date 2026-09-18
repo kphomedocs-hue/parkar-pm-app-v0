@@ -38,7 +38,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p "$RUNNER_TEMP/kg1"
-          base64 -d tmp-g1-discovery-build/source.zip.b64 > "$RUNNER_TEMP/source.zip"
+          cat tmp-g1-discovery-build/parts/0* | tr -d '\r\n\t ' | base64 -d > "$RUNNER_TEMP/source.zip"
           echo "Expected source SHA256: a8da9da94da52c19edac69ea7e2a9a8190aeb9d98a1d26bb774f81ca0a18575e"
           sha256sum "$RUNNER_TEMP/source.zip"
           echo "a8da9da94da52c19edac69ea7e2a9a8190aeb9d98a1d26bb774f81ca0a18575e  $RUNNER_TEMP/source.zip" | sha256sum -c -

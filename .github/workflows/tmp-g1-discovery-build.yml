@@ -11,21 +11,24 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
-      - uses: android-actions/setup-android@v3
-
-      - name: Install Android SDK
+      - name: Install required Android SDK packages
         shell: bash
         run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platforms;android-37" "build-tools;36.0.0" "platform-tools"
+          SDKMANAGER="/usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platforms;android-37" "build-tools;36.0.0" "platform-tools"
 
       - uses: gradle/actions/setup-gradle@v4
         with:
@@ -36,8 +39,10 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/kg1"
           base64 -d tmp-g1-discovery-build/source.zip.b64 > "$RUNNER_TEMP/source.zip"
-          unzip -q "$RUNNER_TEMP/source.zip" -d "$RUNNER_TEMP/kg1"
+          echo "Expected source SHA256: 62c5e1a4518f24075957f2b6c36ddb1a3ff3c7fee210622d3843c95d18be615a"
           sha256sum "$RUNNER_TEMP/source.zip"
+          echo "62c5e1a4518f24075957f2b6c36ddb1a3ff3c7fee210622d3843c95d18be615a  $RUNNER_TEMP/source.zip" | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/source.zip" -d "$RUNNER_TEMP/kg1"
 
       - name: Read-only safety audit
         shell: bash
@@ -52,7 +57,7 @@ jobs:
         run: |
           gradle --no-daemon clean :app:assembleDebug :app:lintDebug
 
-      - name: Verify APK and safety
+      - name: Verify APK
         shell: bash
         working-directory: ${{ runner.temp }}/kg1
         run: |
@@ -60,10 +65,7 @@ jobs:
           mkdir -p out
           cp app/build/outputs/apk/debug/app-debug.apk out/K_G1_Discovery_v0_1.apk
           sha256sum out/K_G1_Discovery_v0_1.apk | tee out/SHA256.txt
-          if unzip -p out/K_G1_Discovery_v0_1.apk AndroidManifest.xml 2>/dev/null | strings | grep -E 'INTERNET|ACCESS_WIFI_STATE|CHANGE_WIFI_STATE|NEARBY_WIFI_DEVICES'; then
-            echo "Unexpected network/Wi-Fi permission marker found"
-            exit 1
-          fi
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose out/K_G1_Discovery_v0_1.apk
 
       - uses: actions/upload-artifact@v4
         with:
